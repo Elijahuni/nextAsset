@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { badRequest, created, serverError } from '@/lib/api-response'
 import type { AssetCategory } from '@/generated/prisma/enums'
+import { requireRoles } from '@/lib/rbac'
 
 // 원본 handleMassUpload 파싱 로직 이식
 // CSV/TSV 행: 자산명, 품목, 취득가액, 부서, 위치
@@ -41,7 +42,10 @@ function generateCode(): string {
 // POST /api/assets/bulk
 // Body: { rows: string[][] | rawText: string, createdById?: string }
 // rawText 형식: 한 줄 = 탭/콤마로 구분된 CSV (자산명, 품목, 취득가액, 부서, 위치)
+// POST /api/assets/bulk — admin, manager만 허용
 export async function POST(request: NextRequest) {
+  const authError = await requireRoles(request, ['ADMIN', 'MANAGER'])
+  if (authError) return authError
   try {
     const body = await request.json()
 

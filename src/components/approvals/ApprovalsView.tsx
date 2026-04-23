@@ -7,21 +7,7 @@ import { useUser } from '@/context/user-context'
 import ApprovalDetailModal from './ApprovalDetailModal'
 import ApprovalDraftModal from '../assets/ApprovalDraftModal'
 import { Skeleton, Badge, EmptyTableRow } from '@/components/ui'
-
-interface ApiApproval {
-  id: string
-  title: string
-  type: string
-  status: string
-  reason: string | null
-  applicantId: string
-  approverId: string | null
-  createdAt: string
-  updatedAt: string
-  applicant: { id: string; name: string; department: string }
-  approver: { id: string; name: string } | null
-  assets: { asset: { id: string; code: string; name: string; status: string } }[]
-}
+import type { ApiApproval } from '@/types'
 
 const STATUS_COLOR: Record<string, string> = {
   PENDING:   'bg-amber-100 text-amber-800 border-amber-200',

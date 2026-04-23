@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { badRequest, notFound, ok, serverError } from '@/lib/api-response'
 import type { ApprovalType, AssetStatus, HistoryType } from '@/generated/prisma/enums'
+import { requireRoles } from '@/lib/rbac'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -48,11 +49,8 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
 }
 
 // PATCH /api/approvals/:id
-// Body: { status, approverId?, reason? }
-// When status === 'APPROVED':
-//   - Updates each linked asset's status
-//   - Creates a HistoryLog for each asset
-//   - All within a single Prisma transaction
+// APPROVED·REJECTED → admin·manager만 가능
+// CANCELLED → 모든 인증 사용자 (기안자 본인 여부는 비즈니스 로직으로 처리)
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
     const { id } = await params
@@ -64,6 +62,12 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const validStatuses = ['APPROVED', 'REJECTED', 'CANCELLED']
     if (!validStatuses.includes(status)) {
       return badRequest(`status must be one of: ${validStatuses.join(', ')}`)
+    }
+
+    // 승인·반려는 admin·manager 권한 필요
+    if (status === 'APPROVED' || status === 'REJECTED') {
+      const authError = await requireRoles(request, ['ADMIN', 'MANAGER'])
+      if (authError) return authError
     }
 
     // Load current approval to validate state transition

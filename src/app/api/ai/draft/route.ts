@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
 import { callGemini } from '@/lib/gemini'
 import { badRequest, ok, serverError } from '@/lib/api-response'
-
-// 원본 handleAiDraftReason의 systemInstruction / prompt 구조 그대로 이식
+import { checkRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
+import { getRequestUser } from '@/lib/rbac'
 
 const SYSTEM_INSTRUCTION =
   '당신은 직장인을 위한 기안서 작성 AI 어시스턴트입니다. ' +
@@ -11,9 +11,28 @@ const SYSTEM_INSTRUCTION =
   '1~2 단락 정도로 간결하면서도 명확하게 작성하며, 긍정적이거나 전문적인 단어를 사용하세요. ' +
   '작성된 텍스트 내용만 출력하세요.'
 
+const AI_LIMIT = 10 // 분당 최대 10회
+
 // POST /api/ai/draft
 // Body: { approvalType, targetAssets, draftReason }
 export async function POST(request: NextRequest) {
+  // Rate Limiting: 사용자 ID 기준 (없으면 IP 기준)
+  const user    = await getRequestUser(request)
+  const limitKey = `ai:draft:${user?.id ?? request.headers.get('x-forwarded-for') ?? 'unknown'}`
+
+  if (!checkRateLimit(limitKey, AI_LIMIT)) {
+    return new Response(
+      JSON.stringify({ error: `AI 요청 한도를 초과했습니다. 1분에 최대 ${AI_LIMIT}회 가능합니다.` }),
+      {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          ...rateLimitHeaders(limitKey, AI_LIMIT),
+        },
+      }
+    )
+  }
+
   try {
     const body = await request.json()
     const { approvalType, targetAssets, draftReason } = body
