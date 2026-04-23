@@ -93,6 +93,10 @@ model Asset {
   historyLogs     HistoryLog[]
   maintenanceLogs MaintenanceLog[]
 
+  @@index([department])
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
   @@map("assets")
 }
 
@@ -105,6 +109,7 @@ model ApprovalAsset {
   asset    Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   @@id([approvalId, assetId])
+  @@index([assetId])
   @@map("approval_assets")
 }
 
@@ -123,6 +128,10 @@ model Approval {
   approver  User?           @relation("Approver", fields: [approverId], references: [id])
   assets    ApprovalAsset[]
 
+  @@index([applicantId])
+  @@index([approverId])
+  @@index([status])
+  @@index([createdAt])
   @@map("approvals")
 }
 
@@ -137,6 +146,8 @@ model HistoryLog {
   asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id])
 
+  @@index([assetId])
+  @@index([date])
   @@map("history_logs")
 }
 
@@ -152,5 +163,7 @@ model MaintenanceLog {
 
   asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
+  @@index([assetId])
+  @@index([date])
   @@map("maintenance_logs")
 }

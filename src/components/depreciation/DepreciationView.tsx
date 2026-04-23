@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Calculator, RefreshCcw, Lock } from 'lucide-react'
+import { Calculator, RefreshCcw, Lock, Settings } from 'lucide-react'
 import { useUser } from '@/context/user-context'
 import { calculateDepreciation } from '@/lib/depreciation'
 import { ASSET_CATEGORY_LABEL, formatCurrency } from '@/lib/utils'
+import DepreciationRuleModal, { type DepreciationRules, loadRules } from './DepreciationRuleModal'
 
 interface ApiAsset {
   id: string
@@ -19,8 +20,11 @@ export default function DepreciationView() {
   const { canManageSystem } = useUser()
   const [assets, setAssets] = useState<ApiAsset[]>([])
   const [loading, setLoading] = useState(true)
+  const [customRules, setCustomRules] = useState<DepreciationRules>({})
+  const [isRuleOpen, setIsRuleOpen] = useState(false)
 
   useEffect(() => {
+    setCustomRules(loadRules())
     fetch('/api/assets')
       .then((r) => r.json())
       .then((data: ApiAsset[]) => setAssets(Array.isArray(data) ? data : []))
@@ -47,15 +51,37 @@ export default function DepreciationView() {
     )
   }
 
+  const totals = assets.reduce(
+    (acc, asset) => {
+      const { accumulated, bookValue } = calculateDepreciation(
+        asset.acquiredDate, Number(asset.price), asset.category, customRules
+      )
+      return {
+        price: acc.price + Number(asset.price),
+        accumulated: acc.accumulated + accumulated,
+        bookValue: acc.bookValue + bookValue,
+      }
+    },
+    { price: 0, accumulated: 0, bookValue: 0 }
+  )
+
   return (
     <div className="h-full flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden print:border-none print:shadow-none">
-      <div className="p-6 border-b border-slate-200 bg-slate-50/50 print:hidden">
-        <h2 className="text-lg font-bold text-slate-800 flex items-center mb-1">
-          <Calculator className="w-5 h-5 mr-2 text-emerald-600" /> 감가상각 명세서 (규정 적용)
-        </h2>
-        <p className="text-xs text-slate-500">
-          * 품목 기준 [상각방법]과 [내용연수]에 따라 월 단위 누계액이 실시간으로 계산됩니다.
-        </p>
+      <div className="p-6 border-b border-slate-200 bg-slate-50/50 print:hidden flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-slate-800 flex items-center mb-1">
+            <Calculator className="w-5 h-5 mr-2 text-emerald-600" /> 감가상각 명세서 (규정 적용)
+          </h2>
+          <p className="text-xs text-slate-500">
+            * 품목 기준 [상각방법]과 [내용연수]에 따라 월 단위 누계액이 실시간으로 계산됩니다.
+          </p>
+        </div>
+        <button
+          onClick={() => setIsRuleOpen(true)}
+          className="flex items-center px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-sm whitespace-nowrap"
+        >
+          <Settings className="w-4 h-4 mr-1.5 text-slate-500" /> 규칙 편집
+        </button>
       </div>
 
       <div className="flex-1 overflow-auto custom-scrollbar print:overflow-visible">
@@ -74,7 +100,7 @@ export default function DepreciationView() {
           <tbody>
             {assets.map((asset) => {
               const { accumulated, bookValue, monthsElapsed, totalMonths, rule } =
-                calculateDepreciation(asset.acquiredDate, Number(asset.price), asset.category)
+                calculateDepreciation(asset.acquiredDate, Number(asset.price), asset.category, customRules)
               const fullyDepreciated = monthsElapsed >= totalMonths || bookValue <= 1000
               return (
                 <tr
@@ -115,8 +141,27 @@ export default function DepreciationView() {
               </tr>
             )}
           </tbody>
+          {/* 합계 행 */}
+          {assets.length > 0 && (
+            <tfoot className="bg-slate-50 border-t-2 border-slate-300 sticky bottom-0 print:static">
+              <tr className="font-bold text-slate-800">
+                <td colSpan={4} className="px-6 py-3 text-sm text-slate-600">합계 ({assets.length}건)</td>
+                <td className="px-6 py-3 text-right">{formatCurrency(totals.price)}</td>
+                <td className="px-6 py-3 text-right text-red-500">- {formatCurrency(totals.accumulated)}</td>
+                <td className="px-6 py-3 text-right text-blue-600">{formatCurrency(totals.bookValue)}</td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
+
+      {isRuleOpen && (
+        <DepreciationRuleModal
+          rules={customRules}
+          onSave={setCustomRules}
+          onClose={() => setIsRuleOpen(false)}
+        />
+      )}
     </div>
   )
 }

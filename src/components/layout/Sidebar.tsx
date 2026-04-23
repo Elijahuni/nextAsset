@@ -20,7 +20,12 @@ const PATH_MAP: Record<string, string> = {
   '/master':       'master',
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen: boolean
+  onClose: () => void
+}
+
+export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const activeMenu = PATH_MAP[pathname] ?? 'dashboard'
   const { currentUser, canManageSystem, isEmployee } = useUser()
@@ -39,6 +44,7 @@ export default function Sidebar() {
     return (
       <Link
         href={href}
+        onClick={onClose}
         className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors justify-between ${isActive ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
       >
         <div className="flex items-center">
@@ -53,7 +59,19 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col shadow-2xl z-20 flex-shrink-0 print:hidden transition-all">
+    <>
+      {/* 모바일 오버레이 배경 */}
+      <div
+        className={`fixed inset-0 bg-black/50 z-40 lg:hidden transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={onClose}
+      />
+
+    <aside className={`
+      fixed lg:static inset-y-0 left-0 z-50 lg:z-auto
+      w-64 bg-slate-900 text-slate-300 flex flex-col shadow-2xl flex-shrink-0 print:hidden
+      transform transition-transform duration-300 ease-in-out
+      ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0
+    `}>
       {/* 로고 */}
       <div className="h-16 flex items-center px-6 bg-slate-950 border-b border-slate-800">
         <Database className="w-6 h-6 text-blue-400 mr-3" />
@@ -121,5 +139,6 @@ export default function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   )
 }

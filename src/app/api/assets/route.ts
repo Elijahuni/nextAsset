@@ -1,10 +1,22 @@
 import { NextRequest } from 'next/server'
+import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { badRequest, created, ok, serverError } from '@/lib/api-response'
 import { AssetCategory, AssetStatus } from '@/generated/prisma/enums'
 
+const CreateAssetSchema = z.object({
+  code:         z.string().min(1, '자산코드는 필수입니다.'),
+  name:         z.string().min(1, '자산명은 필수입니다.'),
+  category:     z.nativeEnum(AssetCategory),
+  department:   z.string().min(1, '부서는 필수입니다.'),
+  location:     z.string().min(1, '위치는 필수입니다.'),
+  price:        z.coerce.number().nonnegative('취득가액은 0 이상이어야 합니다.'),
+  acquiredDate: z.string().min(1, '취득일은 필수입니다.'),
+  barcode:      z.string().optional(),
+  warrantyDate: z.string().optional(),
+})
+
 // GET /api/assets
-// Query params: department, status, category
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
@@ -31,11 +43,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { code, name, category, department, location, price, acquiredDate, barcode, warrantyDate } = body
-
-    if (!code || !name || !category || !department || !location || price == null || !acquiredDate) {
-      return badRequest('code, name, category, department, location, price, acquiredDate are required')
+    const parsed = CreateAssetSchema.safeParse(body)
+    if (!parsed.success) {
+      return badRequest(parsed.error.issues.map((e: { message: string }) => e.message).join(', '))
     }
+    const { code, name, category, department, location, price, acquiredDate, barcode, warrantyDate } = parsed.data
 
     const asset = await prisma.asset.create({
       data: {
@@ -54,7 +66,7 @@ export async function POST(request: NextRequest) {
     return created(asset)
   } catch (error: unknown) {
     if (error instanceof Error && error.message.includes('Unique constraint')) {
-      return badRequest('Asset code or barcode already exists')
+      return badRequest('이미 존재하는 자산코드 또는 바코드입니다.')
     }
     return serverError(error)
   }

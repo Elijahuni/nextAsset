@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Upload, RefreshCcw, CheckCircle } from 'lucide-react'
+import { Upload, RefreshCcw, CheckCircle } from 'lucide-react'
+import { Modal } from '@/components/ui'
 
 interface BulkUploadModalProps {
   onClose: () => void
@@ -55,54 +56,63 @@ export default function BulkUploadModal({ onClose, onSuccess }: BulkUploadModalP
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col max-h-[90vh]">
-
-        {/* 헤더 */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-200">
-          <div>
-            <h2 className="text-lg font-bold text-slate-800 flex items-center">
-              <Upload className="w-5 h-5 mr-2 text-emerald-600" />
-              엑셀 일괄 업로드
-            </h2>
-            <p className="text-xs text-slate-500 mt-1">엑셀에서 셀을 복사한 후 아래에 붙여넣으세요</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
-            <X className="w-5 h-5" />
+    <Modal
+      title={<><Upload className="w-5 h-5 mr-2 text-emerald-600" />엑셀 일괄 업로드</>}
+      onClose={onClose}
+      size="2xl"
+      footer={
+        <div className="p-6 flex justify-end space-x-3">
+          <button
+            onClick={onClose}
+            className="px-5 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading || preview.length === 0}
+            className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center transition-colors"
+          >
+            {loading
+              ? <><RefreshCcw className="w-4 h-4 mr-2 animate-spin" />업로드 중...</>
+              : <><CheckCircle className="w-4 h-4 mr-2" />{preview.length}건 등록</>
+            }
           </button>
         </div>
+      }
+    >
+      <div className="p-6 space-y-4">
+
+        {/* 헤더 서브텍스트 */}
+        <p className="text-xs text-slate-500">엑셀에서 셀을 복사한 후 아래에 붙여넣으세요</p>
 
         {/* 가이드 */}
-        <div className="px-6 pt-4">
-          <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">컬럼 순서 (탭/콤마 구분)</p>
-            <div className="flex space-x-2">
-              {COLUMN_LABELS.map((label, i) => (
-                <span key={label} className="flex items-center text-xs bg-white border border-slate-300 rounded-lg px-3 py-1.5 font-medium text-slate-700 shadow-sm">
-                  <span className="text-slate-400 mr-1.5">{i + 1}.</span>
-                  {label}
-                </span>
-              ))}
-            </div>
-            <p className="text-[10px] text-slate-400 mt-2">
-              예시: <code className="bg-slate-200 px-1 rounded">LG 그램 15인치	노트북	1500000	IT개발팀	본사 4층</code>
-            </p>
+        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">컬럼 순서 (탭/콤마 구분)</p>
+          <div className="flex space-x-2">
+            {COLUMN_LABELS.map((label, i) => (
+              <span key={label} className="flex items-center text-xs bg-white border border-slate-300 rounded-lg px-3 py-1.5 font-medium text-slate-700 shadow-sm">
+                <span className="text-slate-400 mr-1.5">{i + 1}.</span>
+                {label}
+              </span>
+            ))}
           </div>
+          <p className="text-[10px] text-slate-400 mt-2">
+            예시: <code className="bg-slate-200 px-1 rounded">LG 그램 15인치	노트북	1500000	IT개발팀	본사 4층</code>
+          </p>
         </div>
 
         {/* 텍스트 입력 */}
-        <div className="px-6 pt-4 flex-1 min-h-0 flex flex-col">
-          <textarea
-            className="w-full flex-1 min-h-[120px] max-h-[200px] p-3 text-sm font-mono border border-slate-300 rounded-xl resize-none outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
-            placeholder={`자산명\t품목\t취득가액\t부서\t위치\nLG 그램\t노트북\t1500000\tIT개발팀\t본사 4층`}
-            value={uploadText}
-            onChange={(e) => { setUploadText(e.target.value); setError('') }}
-          />
-        </div>
+        <textarea
+          className="w-full min-h-[120px] max-h-[200px] p-3 text-sm font-mono border border-slate-300 rounded-xl resize-none outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
+          placeholder={`자산명\t품목\t취득가액\t부서\t위치\nLG 그램\t노트북\t1500000\tIT개발팀\t본사 4층`}
+          value={uploadText}
+          onChange={(e) => { setUploadText(e.target.value); setError('') }}
+        />
 
         {/* 미리보기 */}
         {preview.length > 0 && (
-          <div className="px-6 pt-3">
+          <div>
             <p className="text-xs font-bold text-slate-500 mb-2">미리보기 ({preview.length}건)</p>
             <div className="overflow-auto max-h-[140px] rounded-xl border border-slate-200 custom-scrollbar">
               <table className="w-full text-xs text-left">
@@ -136,32 +146,10 @@ export default function BulkUploadModal({ onClose, onSuccess }: BulkUploadModalP
 
         {/* 에러 */}
         {error && (
-          <div className="px-6 pt-3">
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
-          </div>
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
         )}
 
-        {/* 액션 버튼 */}
-        <div className="p-6 flex justify-end space-x-3 border-t border-slate-100 mt-3">
-          <button
-            onClick={onClose}
-            className="px-5 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
-          >
-            취소
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading || preview.length === 0}
-            className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center transition-colors"
-          >
-            {loading
-              ? <><RefreshCcw className="w-4 h-4 mr-2 animate-spin" />업로드 중...</>
-              : <><CheckCircle className="w-4 h-4 mr-2" />{preview.length}건 등록</>
-            }
-          </button>
-        </div>
-
       </div>
-    </div>
+    </Modal>
   )
 }

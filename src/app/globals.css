@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  body {
+    @apply bg-slate-50 dark:bg-slate-900;
+  }
+}
+
 /* custom-scrollbar: 원본 MVP에서 사용하는 스크롤바 스타일 */
 @layer utilities {
   .custom-scrollbar::-webkit-scrollbar {
@@ -17,5 +23,29 @@
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: #94a3b8; /* slate-400 */
+  }
+}
+
+/* 자산 원장 인쇄 스타일 */
+@media print {
+  body {
+    background: white !important;
+  }
+  .print\:hidden {
+    display: none !important;
+  }
+  /* 테이블 페이지 분할 방지 */
+  tr {
+    page-break-inside: avoid;
+  }
+  /* 인쇄 시 그림자·둥근 모서리 제거 */
+  table {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  /* 색상 배경 유지 (Chrome 기준) */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
