@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ─────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+enum AssetStatus {
+  AVAILABLE
+  IN_USE
+  UNDER_MAINTENANCE
+  RETIRED
+  DISPOSED
+}
+
+enum AssetCategory {
+  IT_EQUIPMENT
+  FURNITURE
+  VEHICLE
+  MACHINERY
+  OTHER
+}
+
+enum ApprovalType {
+  PURCHASE
+  DISPOSAL
+  TRANSFER
+  MAINTENANCE_REQUEST
+  RENTAL
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum HistoryType {
+  ASSIGNED
+  RETURNED
+  TRANSFERRED
+  MAINTAINED
+  DISPOSED
+  STATUS_CHANGED
+}
+
+// ─── Models ────────────────────────────────────────────────────────────────
+
+model User {
+  id         String   @id @default(cuid())
+  name       String
+  email      String   @unique
+  role       UserRole @default(STAFF)
+  department String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  assetsApplied  Approval[]   @relation("Applicant")
+  assetsApproved Approval[]   @relation("Approver")
+  historyLogs    HistoryLog[]
+
+  @@map("users")
+}
+
+model Asset {
+  id           String        @id @default(cuid())
+  code         String        @unique
+  barcode      String?       @unique
+  name         String
+  category     AssetCategory
+  department   String
+  location     String
+  status       AssetStatus   @default(AVAILABLE)
+  price        Decimal       @db.Decimal(12, 2)
+  acquiredDate DateTime
+  warrantyDate DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  approvals       ApprovalAsset[]
+  historyLogs     HistoryLog[]
+  maintenanceLogs MaintenanceLog[]
+
+  @@index([department])
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
+  @@map("assets")
+}
+
+// Approval ↔ Asset 다대다 조인 테이블
+model ApprovalAsset {
+  approvalId String
+  assetId    String
+
+  approval Approval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  asset    Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([approvalId, assetId])
+  @@index([assetId])
+  @@map("approval_assets")
+}
+
+model Approval {
+  id          String         @id @default(cuid())
+  title       String
+  type        ApprovalType
+  status      ApprovalStatus @default(PENDING)
+  reason      String?        @db.Text
+  applicantId String
+  approverId  String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  applicant User            @relation("Applicant", fields: [applicantId], references: [id])
+  approver  User?           @relation("Approver", fields: [approverId], references: [id])
+  assets    ApprovalAsset[]
+
+  @@index([applicantId])
+  @@index([approverId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("approvals")
+}
+
+model HistoryLog {
+  id      String      @id @default(cuid())
+  assetId String
+  userId  String
+  date    DateTime    @default(now())
+  type    HistoryType
+  detail  String      @db.Text
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@index([assetId])
+  @@index([date])
+  @@map("history_logs")
+}
+
+model MaintenanceLog {
+  id        String   @id @default(cuid())
+  assetId   String
+  date      DateTime
+  vendor    String
+  cost      Decimal  @db.Decimal(12, 2)
+  detail    String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@index([date])
+  @@map("maintenance_logs")
+}
