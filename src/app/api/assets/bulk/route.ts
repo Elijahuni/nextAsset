@@ -107,38 +107,51 @@ export async function POST(request: NextRequest) {
     })
     const existingMap = new Map(existing.map((a) => [a.code, a.id]))
 
-    let inserted    = 0
-    let updated     = 0
-    let deactivated = 0
+    // Case A / Case B 분리
+    const insertRows: ReturnType<typeof parseRow>[] = []
+    const updateOps: { id: string; data: ReturnType<typeof parseRow> }[] = []
 
-    // Case A + Case B: 엑셀 행 순회
     for (const cols of rows) {
       const parsed     = parseRow(cols)
       const existingId = existingMap.get(parsed.code)
-
       if (!existingId) {
-        // Case A — 신규 Insert
-        await prisma.asset.create({
-          data: { ...parsed, status: 'AVAILABLE' },
-        })
-        inserted++
+        insertRows.push(parsed)
       } else {
-        // Case B — 기존 자산 업데이트 (이미지 제외, 취득가액·취득일은 덮어쓰지 않음)
-        await prisma.asset.update({
-          where: { id: existingId },
-          data: {
-            name:       parsed.name,
-            category:   parsed.category,
-            price:      parsed.price,
-            department: parsed.department,
-            location:   parsed.location,
-            ...(parsed.barcode !== undefined && { barcode: parsed.barcode }),
-            ...(parsed.remarks !== undefined && { remarks: parsed.remarks }),
-          },
-        })
-        updated++
+        updateOps.push({ id: existingId, data: parsed })
       }
     }
+
+    // Case A — 신규 Insert (1 쿼리)
+    if (insertRows.length > 0) {
+      await prisma.asset.createMany({
+        data: insertRows.map((r) => ({ ...r, status: 'AVAILABLE' as const })),
+        skipDuplicates: true,
+      })
+    }
+
+    // Case B — 기존 자산 업데이트 (1 DB 왕복, N SQL)
+    if (updateOps.length > 0) {
+      await prisma.$transaction(
+        updateOps.map(({ id, data }) =>
+          prisma.asset.update({
+            where: { id },
+            data: {
+              name:       data.name,
+              category:   data.category,
+              price:      data.price,
+              department: data.department,
+              location:   data.location,
+              ...(data.barcode !== undefined && { barcode: data.barcode }),
+              ...(data.remarks !== undefined && { remarks: data.remarks }),
+            },
+          }),
+        ),
+      )
+    }
+
+    const inserted = insertRows.length
+    const updated  = updateOps.length
+    let   deactivated = 0
 
     // Case C — 엑셀에 없는 자산 → RETIRED (비활성)
     // 안전 임계값: 전체 자산의 30% 초과 비활성화 시 ?force=true 필요
