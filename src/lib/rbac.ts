@@ -30,11 +30,12 @@ export async function getRequestUser(request: NextRequest) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
+  if (!user || !user.email) return null
 
+  // Supabase auth.users.id (UUID) ≠ public.users.id (cuid) 이므로 email로 매칭
   return prisma.user.findUnique({
-    where: { id: user.id },
-    select: { id: true, name: true, role: true, department: true },
+    where: { email: user.email },
+    select: { id: true, name: true, email: true, role: true, department: true },
   })
 }
 

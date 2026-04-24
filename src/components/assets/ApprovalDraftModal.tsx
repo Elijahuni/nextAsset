@@ -1,13 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { FileSignature, Sparkles, RefreshCcw, CheckCircle } from 'lucide-react'
-import { useUser, MOCK_USERS } from '@/context/user-context'
+import { useUser } from '@/context/user-context'
 import { Modal } from '@/components/ui'
 import type { ApiAsset } from '@/types'
+
+interface UserOption {
+  id:         string
+  name:       string
+  department: string
+}
 
 // ─── Zod 스키마 ───────────────────────────────────────────────────────────────
 const schema = z.object({
@@ -60,7 +66,17 @@ export default function ApprovalDraftModal({ selectedAssets, onClose, onSuccess 
   const watchedType   = watch('type')
   const watchedReason = watch('reason')
 
-  const approverOptions = MOCK_USERS.filter((u) => u.id !== currentUser.id)
+  // /api/users로부터 결재자 목록 동적 로드 (자기 자신 제외)
+  const [approverOptions, setApproverOptions] = useState<UserOption[]>([])
+  useEffect(() => {
+    fetch('/api/users')
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: UserOption[]) => {
+        const list = Array.isArray(data) ? data : []
+        setApproverOptions(list.filter((u) => u.id !== currentUser.id))
+      })
+      .catch(() => setApproverOptions([]))
+  }, [currentUser.id])
 
   // ── AI 자동완성 ──────────────────────────────────────────────────────────────
   const handleAiDraft = async () => {
