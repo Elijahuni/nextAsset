@@ -100,12 +100,27 @@ export async function POST(request: NextRequest) {
       rows.map((c) => (c[0] || '').trim()).filter(Boolean)
     )
 
-    // DB에서 소프트 삭제되지 않은 자산 코드 전체 조회
+    // 활성 자산만 조회 (RETIRED/DISPOSED 제외) — 임계값 계산 정확도 + Case C 불필요 UPDATE 방지
     const existing = await prisma.asset.findMany({
-      where:  { deletedAt: null },
+      where:  { deletedAt: null, status: { notIn: ['RETIRED', 'DISPOSED'] } },
       select: { id: true, code: true },
     })
     const existingMap = new Map(existing.map((a) => [a.code, a.id]))
+
+    // Case C 대상 사전 계산 — DB 쓰기 전에 임계값 검증
+    const toDeactivate = existing.filter((a) => !excelCodes.has(a.code))
+    const forceMode    = request.nextUrl.searchParams.get('force') === 'true'
+    const threshold    = Math.ceil(existing.length * 0.3)
+    if (toDeactivate.length > threshold && !forceMode) {
+      return new Response(
+        JSON.stringify({
+          error: `비활성화 대상(${toDeactivate.length}건)이 활성 자산(${existing.length}건)의 30%를 초과합니다. 의도한 작업이면 ?force=true 파라미터를 추가하세요.`,
+          toDeactivate: toDeactivate.length,
+          total:        existing.length,
+        }),
+        { status: 409, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
 
     // Case A / Case B 분리
     const insertRows: ReturnType<typeof parseRow>[] = []
@@ -153,22 +168,8 @@ export async function POST(request: NextRequest) {
     const updated  = updateOps.length
     let   deactivated = 0
 
-    // Case C — 엑셀에 없는 자산 → RETIRED (비활성)
-    // 안전 임계값: 전체 자산의 30% 초과 비활성화 시 ?force=true 필요
-    const toDeactivate = existing.filter((a) => !excelCodes.has(a.code))
+    // Case C — 엑셀에 없는 활성 자산 → RETIRED
     if (toDeactivate.length > 0) {
-      const forceMode  = request.nextUrl.searchParams.get('force') === 'true'
-      const threshold  = Math.ceil(existing.length * 0.3)
-      if (toDeactivate.length > threshold && !forceMode) {
-        return new Response(
-          JSON.stringify({
-            error: `비활성화 대상(${toDeactivate.length}건)이 전체 자산(${existing.length}건)의 30%를 초과합니다. 의도한 작업이면 ?force=true 파라미터를 추가하세요.`,
-            toDeactivate: toDeactivate.length,
-            total:        existing.length,
-          }),
-          { status: 409, headers: { 'Content-Type': 'application/json' } },
-        )
-      }
       await prisma.asset.updateMany({
         where: { id: { in: toDeactivate.map((a) => a.id) } },
         data:  { status: 'RETIRED' },
