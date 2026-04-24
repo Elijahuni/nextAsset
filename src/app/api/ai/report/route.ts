@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { callGemini } from '@/lib/gemini'
 import { badRequest, ok, serverError } from '@/lib/api-response'
 import { checkRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
-import { getRequestUser } from '@/lib/rbac'
+import { requireRoles, getRequestUser } from '@/lib/rbac'
 
 const SYSTEM_INSTRUCTION =
   '당신은 대기업의 전문적인 재무/자산관리 분석가입니다. ' +
@@ -11,14 +11,17 @@ const SYSTEM_INSTRUCTION =
 
 const AI_LIMIT = 5 // 리포트는 분당 최대 5회 (더 무거운 요청)
 
-// POST /api/ai/report
+// POST /api/ai/report — 인증된 사용자만 사용 가능
 // Body: { totalAssets, totalValue, inUseAssets, repairingAssets, disposedAssets, topDepartments, topCategories }
 export async function POST(request: NextRequest) {
-  // Rate Limiting: 사용자 ID 기준 (없으면 IP 기준)
+  const authError = await requireRoles(request, ['ADMIN', 'MANAGER', 'STAFF'])
+  if (authError) return authError
+
+  // Rate Limiting: 사용자 ID 기준
   const user     = await getRequestUser(request)
   const limitKey = `ai:report:${user?.id ?? request.headers.get('x-forwarded-for') ?? 'unknown'}`
 
-  if (!checkRateLimit(limitKey, AI_LIMIT)) {
+  if (!await checkRateLimit(limitKey, AI_LIMIT)) {
     return new Response(
       JSON.stringify({ error: `AI 요청 한도를 초과했습니다. 1분에 최대 ${AI_LIMIT}회 가능합니다.` }),
       {

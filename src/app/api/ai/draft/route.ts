@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { callGemini } from '@/lib/gemini'
 import { badRequest, ok, serverError } from '@/lib/api-response'
 import { checkRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
-import { getRequestUser } from '@/lib/rbac'
+import { requireRoles, getRequestUser } from '@/lib/rbac'
 
 const SYSTEM_INSTRUCTION =
   '당신은 직장인을 위한 기안서 작성 AI 어시스턴트입니다. ' +
@@ -13,14 +13,17 @@ const SYSTEM_INSTRUCTION =
 
 const AI_LIMIT = 10 // 분당 최대 10회
 
-// POST /api/ai/draft
+// POST /api/ai/draft — 인증된 사용자만 사용 가능
 // Body: { approvalType, targetAssets, draftReason }
 export async function POST(request: NextRequest) {
-  // Rate Limiting: 사용자 ID 기준 (없으면 IP 기준)
-  const user    = await getRequestUser(request)
+  const authError = await requireRoles(request, ['ADMIN', 'MANAGER', 'STAFF'])
+  if (authError) return authError
+
+  // Rate Limiting: 사용자 ID 기준 (requireRoles 통과 후라 user는 항상 존재하나 방어적으로 처리)
+  const user     = await getRequestUser(request)
   const limitKey = `ai:draft:${user?.id ?? request.headers.get('x-forwarded-for') ?? 'unknown'}`
 
-  if (!checkRateLimit(limitKey, AI_LIMIT)) {
+  if (!await checkRateLimit(limitKey, AI_LIMIT)) {
     return new Response(
       JSON.stringify({ error: `AI 요청 한도를 초과했습니다. 1분에 최대 ${AI_LIMIT}회 가능합니다.` }),
       {
