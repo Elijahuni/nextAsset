@@ -105,10 +105,10 @@ export default function AssetCreateModal({ onClose, onSuccess }: Props) {
     >
       <form className="p-6 space-y-4" onSubmit={handleSubmit(onSubmit)}>
 
-        {/* 자산코드 */}
+        {/* 자산관리번호 */}
         <div>
           <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-            자산코드 <span className="text-red-500">*</span>
+            자산관리번호 <span className="text-red-500">*</span>
           </label>
           <div className="flex gap-2">
             <input
@@ -127,10 +127,10 @@ export default function AssetCreateModal({ onClose, onSuccess }: Props) {
           {errors.code && <p className={ERR_CLS}>{errors.code.message}</p>}
         </div>
 
-        {/* 자산명 */}
+        {/* 품명 */}
         <div>
           <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-            자산명 <span className="text-red-500">*</span>
+            품명 (자산명) <span className="text-red-500">*</span>
           </label>
           <input
             {...register('name')}
@@ -140,10 +140,10 @@ export default function AssetCreateModal({ onClose, onSuccess }: Props) {
           {errors.name && <p className={ERR_CLS}>{errors.name.message}</p>}
         </div>
 
-        {/* 품목 */}
+        {/* 분류 */}
         <div>
           <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-            품목 <span className="text-red-500">*</span>
+            분류코드 <span className="text-red-500">*</span>
           </label>
           <select
             {...register('category')}
@@ -170,26 +170,26 @@ export default function AssetCreateModal({ onClose, onSuccess }: Props) {
           {errors.price && <p className={ERR_CLS}>{errors.price.message}</p>}
         </div>
 
-        {/* 부서 / 위치 */}
+        {/* 사업장 / 상세위치 */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-              부서 <span className="text-red-500">*</span>
+              사업장 <span className="text-red-500">*</span>
             </label>
             <input
               {...register('department')}
-              placeholder="IT개발팀"
+              placeholder="본사 / 3공장 / 수원연구소"
               className={`${INPUT_CLS} ${errors.department ? 'border-red-400' : 'border-slate-300'}`}
             />
             {errors.department && <p className={ERR_CLS}>{errors.department.message}</p>}
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-              위치 <span className="text-red-500">*</span>
+              상세위치/층 <span className="text-red-500">*</span>
             </label>
             <input
               {...register('location')}
-              placeholder="본사 4층"
+              placeholder="3층 / A동 창고"
               className={`${INPUT_CLS} ${errors.location ? 'border-red-400' : 'border-slate-300'}`}
             />
             {errors.location && <p className={ERR_CLS}>{errors.location.message}</p>}
@@ -221,14 +221,14 @@ export default function AssetCreateModal({ onClose, onSuccess }: Props) {
           </div>
         </div>
 
-        {/* 바코드 */}
+        {/* 시리얼번호 */}
         <div>
           <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-            바코드 (선택)
+            시리얼번호 (선택)
           </label>
           <input
             {...register('barcode')}
-            placeholder="바코드 번호"
+            placeholder="제품 시리얼번호"
             className={`${INPUT_CLS} border-slate-300`}
           />
         </div>

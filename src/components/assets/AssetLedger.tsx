@@ -303,7 +303,7 @@ export default function AssetLedger() {
                       label={ASSET_CATEGORY_LABEL[asset.category] ?? asset.category}
                     />
                     <span className="text-xs text-slate-400 dark:text-slate-500">
-                      {asset.department} · {asset.location}
+                      {asset.department} · {asset.location ?? '-'}
                     </span>
                   </div>
                   {!isEmployee && (
@@ -332,10 +332,10 @@ export default function AssetLedger() {
                 />
               </th>
               <th className="px-6 py-4 font-semibold">상태</th>
-              <th className="px-6 py-4 font-semibold">자산코드</th>
-              <th className="px-6 py-4 font-semibold">품목</th>
-              <th className="px-6 py-4 font-semibold">자산명칭</th>
-              <th className="px-6 py-4 font-semibold">부서 / 위치</th>
+              <th className="px-6 py-4 font-semibold">자산관리번호</th>
+              <th className="px-6 py-4 font-semibold">분류</th>
+              <th className="px-6 py-4 font-semibold">품명</th>
+              <th className="px-6 py-4 font-semibold">사업장 / 상세위치</th>
               {!isEmployee && <th className="px-6 py-4 font-semibold text-right">취득가액</th>}
             </tr>
           </thead>
@@ -371,7 +371,7 @@ export default function AssetLedger() {
                 <td className="px-6 py-3 text-xs">
                   <span className="font-medium text-slate-700 dark:text-slate-300">{asset.department}</span>
                   <br />
-                  <span className="text-slate-400">{asset.location}</span>
+                  <span className="text-slate-400">{asset.location ?? '-'}</span>
                 </td>
                 {!isEmployee && (
                   <td className="px-6 py-3 text-right font-bold text-slate-800 dark:text-slate-100">

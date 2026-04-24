@@ -206,14 +206,14 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
             {tab === 'info' && (
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  { label: '자산코드', value: asset.code },
-                  { label: '품목', value: ASSET_CATEGORY_LABEL[asset.category] ?? asset.category },
-                  { label: '부서', value: asset.department },
-                  { label: '위치', value: asset.location },
-                  { label: '상태', value: ASSET_STATUS_LABEL[asset.status] ?? asset.status },
+                  { label: '자산관리번호', value: asset.code },
+                  { label: '분류',     value: ASSET_CATEGORY_LABEL[asset.category] ?? asset.category },
+                  { label: '사업장',   value: asset.department },
+                  { label: '상세위치/층', value: asset.location },
+                  { label: '상태',     value: ASSET_STATUS_LABEL[asset.status] ?? asset.status },
                   { label: '취득가액', value: formatCurrency(Number(asset.price)) },
-                  { label: '취득일', value: asset.acquiredDate?.split('T')[0] ?? '-' },
-                  { label: '바코드', value: asset.barcode ?? '미설정' },
+                  { label: '취득일',   value: asset.acquiredDate?.split('T')[0] ?? '-' },
+                  { label: '시리얼번호', value: asset.barcode ?? '미설정' },
                 ].map(({ label, value }) => (
                   <div key={label} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
                     <p className="text-xs text-slate-400 font-medium mb-1">{label}</p>
