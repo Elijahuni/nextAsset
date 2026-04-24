@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { RefreshCcw, Wrench, History, Info, ShieldAlert, CheckCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
-import { ASSET_CATEGORY_LABEL, ASSET_STATUS_LABEL, formatCurrency, getWarrantyStatus } from '@/lib/utils'
+import { ASSET_CATEGORY_LABEL, ASSET_STATUS_LABEL, formatCurrency, getWarrantyStatus, getActiveLabel } from '@/lib/utils'
 import { Modal } from '@/components/ui'
 
 interface HistoryLog {
@@ -169,9 +169,20 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
         </div>
       }
     >
-      {/* 자산코드 서브텍스트 */}
+      {/* 자산관리번호 + 활성/비활성 배지 */}
       {asset && (
-        <p className="text-xs font-mono text-slate-400 px-6 pt-3">{asset.code}</p>
+        <div className="flex items-center gap-2 px-6 pt-3">
+          <span className="text-xs font-mono bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-600 select-all">
+            {asset.code}
+          </span>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+            getActiveLabel(asset.status) === '활성'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-700'
+              : 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600'
+          }`}>
+            {getActiveLabel(asset.status)}
+          </span>
+        </div>
       )}
 
       {/* 탭 */}
@@ -204,32 +215,39 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
           <>
             {/* 기본정보 탭 */}
             {tab === 'info' && (
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { label: '자산관리번호', value: asset.code },
-                  { label: '분류',     value: ASSET_CATEGORY_LABEL[asset.category] ?? asset.category },
-                  { label: '사업장',   value: asset.department },
-                  { label: '상세위치/층', value: asset.location },
-                  { label: '상태',     value: ASSET_STATUS_LABEL[asset.status] ?? asset.status },
-                  { label: '취득가액', value: formatCurrency(Number(asset.price)) },
-                  { label: '취득일',   value: asset.acquiredDate?.split('T')[0] ?? '-' },
-                  { label: '시리얼번호', value: asset.barcode ?? '미설정' },
-                ].map(({ label, value }) => (
-                  <div key={label} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                    <p className="text-xs text-slate-400 font-medium mb-1">{label}</p>
-                    <p className="text-sm font-semibold text-slate-800">{value}</p>
+              <div className="space-y-3">
+                {/* 품명 — 최상단 강조 */}
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-100 dark:border-blue-800">
+                  <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mb-1">품명 (모델명)</p>
+                  <p className="text-base font-bold text-slate-900 dark:text-slate-100">{asset.name}</p>
+                </div>
+                {/* 2열 그리드 */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: '분류코드',   value: ASSET_CATEGORY_LABEL[asset.category] ?? asset.category },
+                    { label: '상태',       value: ASSET_STATUS_LABEL[asset.status] ?? asset.status },
+                    { label: '사업장',     value: asset.department },
+                    { label: '상세위치/층', value: asset.location },
+                    { label: '취득가액',   value: formatCurrency(Number(asset.price)) },
+                    { label: '취득일',     value: asset.acquiredDate?.split('T')[0] ?? '-' },
+                    { label: '시리얼번호', value: asset.barcode ?? '미설정' },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3.5 border border-slate-100 dark:border-slate-600">
+                      <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-1">{label}</p>
+                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{value}</p>
+                    </div>
+                  ))}
+                  <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3.5 border border-slate-100 dark:border-slate-600">
+                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-1">보증기간</p>
+                    {(() => {
+                      const ws = getWarrantyStatus(asset.warrantyDate)
+                      return (
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded border ${ws.color}`}>
+                          {ws.text}
+                        </span>
+                      )
+                    })()}
                   </div>
-                ))}
-                <div className="col-span-2 bg-slate-50 rounded-xl p-4 border border-slate-100">
-                  <p className="text-xs text-slate-400 font-medium mb-1">보증기간</p>
-                  {(() => {
-                    const ws = getWarrantyStatus(asset.warrantyDate)
-                    return (
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-md border ${ws.color}`}>
-                        {ws.text}
-                      </span>
-                    )
-                  })()}
                 </div>
               </div>
             )}

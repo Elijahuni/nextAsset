@@ -14,6 +14,23 @@ export const ASSET_STATUS_LABEL: Record<string, string> = {
   DISPOSED:          '처분',
 }
 
+// TW-AMS 호환: active / inactive 그룹 매핑
+// active  = 현재 운용 중 (AVAILABLE, IN_USE, UNDER_MAINTENANCE)
+// inactive = 운용 종료  (RETIRED, DISPOSED)
+export const ACTIVE_STATUS_SET  = new Set(['AVAILABLE', 'IN_USE', 'UNDER_MAINTENANCE'])
+export const INACTIVE_STATUS_SET = new Set(['RETIRED', 'DISPOSED'])
+
+export function getActiveLabel(status: string): '활성' | '비활성' {
+  return ACTIVE_STATUS_SET.has(status) ? '활성' : '비활성'
+}
+
+// active/inactive 필터값 → Prisma where status IN [...] 용 enum 배열 반환
+export function statusGroupToEnums(group: 'active' | 'inactive' | ''): string[] {
+  if (group === 'active')   return ['AVAILABLE', 'IN_USE', 'UNDER_MAINTENANCE']
+  if (group === 'inactive') return ['RETIRED', 'DISPOSED']
+  return []
+}
+
 // AssetCategory enum → 한국어 라벨
 export const ASSET_CATEGORY_LABEL: Record<string, string> = {
   IT_EQUIPMENT: 'IT장비',
