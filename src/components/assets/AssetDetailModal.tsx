@@ -6,38 +6,15 @@ import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
 import { ASSET_CATEGORY_LABEL, ASSET_STATUS_LABEL, formatCurrency, getWarrantyStatus, getActiveLabel } from '@/lib/utils'
 import { Modal } from '@/components/ui'
+import type { ApiAsset, ApiHistoryLog, ApiMaintenanceLog } from '@/types'
 
-interface HistoryLog {
-  id: string
-  type: string
-  detail: string
-  date: string
-  user: { id: string; name: string }
-}
-
-interface MaintenanceLog {
-  id: string
-  date: string
-  vendor: string
-  cost: string | number
-  detail: string
-}
-
-interface AssetDetail {
-  id: string
-  code: string
-  barcode: string | null
-  name: string
-  category: string
-  department: string
-  location: string
-  status: string
-  price: string | number
-  acquiredDate: string
-  warrantyDate: string | null
-  remarks: string | null
-  historyLogs: HistoryLog[]
-  maintenanceLogs: MaintenanceLog[]
+// 상세 API 응답은 historyLogs/maintenanceLogs를 항상 포함해 반환하므로 required로 좁힘
+type AssetDetail = Omit<ApiAsset, 'historyLogs' | 'maintenanceLogs' | 'warrantyDate' | 'barcode' | 'remarks'> & {
+  warrantyDate:    string | null
+  barcode:         string | null
+  remarks:         string | null
+  historyLogs:     (Omit<ApiHistoryLog, 'user'> & { user?: { id: string; name: string } })[]
+  maintenanceLogs: ApiMaintenanceLog[]
 }
 
 interface AssetDetailModalProps {
