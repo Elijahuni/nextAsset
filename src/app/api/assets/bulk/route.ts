@@ -141,8 +141,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Case C — 엑셀에 없는 자산 → RETIRED (비활성)
+    // 안전 임계값: 전체 자산의 30% 초과 비활성화 시 ?force=true 필요
     const toDeactivate = existing.filter((a) => !excelCodes.has(a.code))
     if (toDeactivate.length > 0) {
+      const forceMode  = request.nextUrl.searchParams.get('force') === 'true'
+      const threshold  = Math.ceil(existing.length * 0.3)
+      if (toDeactivate.length > threshold && !forceMode) {
+        return new Response(
+          JSON.stringify({
+            error: `비활성화 대상(${toDeactivate.length}건)이 전체 자산(${existing.length}건)의 30%를 초과합니다. 의도한 작업이면 ?force=true 파라미터를 추가하세요.`,
+            toDeactivate: toDeactivate.length,
+            total:        existing.length,
+          }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
       await prisma.asset.updateMany({
         where: { id: { in: toDeactivate.map((a) => a.id) } },
         data:  { status: 'RETIRED' },

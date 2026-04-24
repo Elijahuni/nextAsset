@@ -19,16 +19,25 @@ const CreateAssetSchema = z.object({
   remarks:      z.string().optional(),
 })
 
+// 유효한 enum 값 화이트리스트
+const VALID_STATUSES  = new Set(Object.values(AssetStatus))
+const VALID_CATEGORIES = new Set(Object.values(AssetCategory))
+
 // GET /api/assets
 // ?q=검색어&status=&category=&department=&page=1&limit=50
 // ▸ page 파라미터가 없으면 전체 배열 반환 (Dashboard 하위 호환)
 // ▸ page 파라미터가 있으면 페이지네이션 객체 반환
 export async function GET(request: NextRequest) {
+  const authError = await requireRoles(request, ['ADMIN', 'MANAGER', 'STAFF'])
+  if (authError) return authError
   try {
     const { searchParams } = request.nextUrl
     const department  = searchParams.get('department') ?? undefined
-    const status      = searchParams.get('status') as AssetStatus | null
-    const category    = searchParams.get('category') as AssetCategory | null
+    const rawStatus   = searchParams.get('status')
+    const rawCategory = searchParams.get('category')
+    // enum 화이트리스트 검증 — 잘못된 값은 무시
+    const status   = rawStatus   && VALID_STATUSES.has(rawStatus as AssetStatus)   ? rawStatus as AssetStatus   : null
+    const category = rawCategory && VALID_CATEGORIES.has(rawCategory as AssetCategory) ? rawCategory as AssetCategory : null
     const q           = searchParams.get('q')?.trim() ?? ''
     // TW-AMS 호환: ?active=active|inactive → 상태 그룹 필터
     const activeGroup = searchParams.get('active') as 'active' | 'inactive' | null
@@ -51,11 +60,12 @@ export async function GET(request: NextRequest) {
       ...(category   && { category }),
     }
 
-    // ── 하위 호환: page 파라미터 없으면 전체 배열 반환 ─────────────────
+    // ── 하위 호환: page 파라미터 없으면 전체 배열 반환 (최대 1000건 캡) ──
     if (!searchParams.has('page')) {
       const assets = await prisma.asset.findMany({
         where,
         orderBy: { createdAt: 'desc' },
+        take: 1000,
       })
       return ok(assets)
     }
