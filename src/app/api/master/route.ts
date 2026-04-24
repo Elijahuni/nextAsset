@@ -1,83 +1,90 @@
-import { NextRequest } from 'next/server'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
-import { join } from 'path'
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { ok, badRequest, serverError } from '@/lib/api-response'
+import { requireRoles } from '@/lib/rbac'
 
-const DATA_DIR = join(process.cwd(), 'data')
-const DATA_FILE = join(DATA_DIR, 'master.json')
+type MasterKey = 'departments' | 'locations' | 'vendors' | 'categories'
+const VALID_KEYS: MasterKey[] = ['departments', 'locations', 'vendors', 'categories']
 
-interface MasterData {
-  categories: string[]
-  departments: string[]
-  locations: string[]
-  vendors: string[]
-}
-
-const DEFAULT_DATA: MasterData = {
-  categories: ['노트북', '데스크탑', '모니터', '사무가구', '차량', '기계장치', '소프트웨어'],
+// 파일시스템 폴백 (DB 테이블 미생성 시 기본값 반환)
+const DEFAULT_DATA: Record<MasterKey, string[]> = {
+  categories:  ['노트북', '데스크탑', '모니터', '사무가구', '차량', '기계장치', '소프트웨어'],
   departments: ['경영지원부', 'IT개발팀', '영업팀', '마케팅팀', '회계팀'],
-  locations: ['본사 1층', '본사 2층', '본사 3층', '본사 4층', '별관 A동', '창고'],
-  vendors: ['삼성전자 서비스', 'LG전자 서비스', 'Dell 코리아', '현대자동차'],
+  locations:   ['본사 1층', '본사 2층', '본사 3층', '본사 4층', '별관 A동', '창고'],
+  vendors:     ['삼성전자 서비스', 'LG전자 서비스', 'Dell 코리아', '현대자동차'],
 }
 
-type MasterKey = keyof MasterData
-const VALID_KEYS: MasterKey[] = ['categories', 'departments', 'locations', 'vendors']
-
-function readData(): MasterData {
-  if (!existsSync(DATA_FILE)) return DEFAULT_DATA
-  try {
-    return JSON.parse(readFileSync(DATA_FILE, 'utf-8')) as MasterData
-  } catch {
-    return DEFAULT_DATA
-  }
-}
-
-function writeData(data: MasterData) {
-  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true })
-  writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8')
-}
-
-// GET /api/master
+// GET /api/master — 5분 캐싱
 export async function GET() {
   try {
-    return ok(readData())
-  } catch (error) {
-    return serverError(error)
+    const items = await prisma.masterItem.findMany({ orderBy: { value: 'asc' } })
+
+    // type별로 그룹핑
+    const grouped = items.reduce<Record<string, string[]>>((acc, item) => {
+      if (!acc[item.type]) acc[item.type] = []
+      acc[item.type].push(item.value)
+      return acc
+    }, {})
+
+    const data = {
+      categories:  grouped.categories  ?? DEFAULT_DATA.categories,
+      departments: grouped.departments ?? DEFAULT_DATA.departments,
+      locations:   grouped.locations   ?? DEFAULT_DATA.locations,
+      vendors:     grouped.vendors     ?? DEFAULT_DATA.vendors,
+    }
+
+    const res = ok(data)
+    res.headers.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
+    return res
+  } catch {
+    // DB 테이블 미존재 시 기본값 반환 (배포 초기 방어)
+    const res = NextResponse.json(DEFAULT_DATA, { status: 200 })
+    res.headers.set('Cache-Control', 'no-store')
+    return res
   }
 }
 
-// POST /api/master  — body: { type, value }
+// POST /api/master — admin만 허용
 export async function POST(request: NextRequest) {
+  const authError = await requireRoles(request, ['ADMIN'])
+  if (authError) return authError
   try {
     const { type, value } = await request.json()
+
     if (!VALID_KEYS.includes(type as MasterKey) || !value?.trim()) {
-      return badRequest('type and value are required')
+      return badRequest('type과 value는 필수입니다.')
     }
-    const data = readData()
-    const key = type as MasterKey
-    if (data[key].includes(value.trim())) {
+
+    await prisma.masterItem.create({
+      data: { type: type as MasterKey, value: value.trim() },
+    })
+
+    // 갱신된 전체 목록 반환
+    return GET()
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message.includes('Unique constraint')) {
       return badRequest('이미 존재하는 항목입니다.')
     }
-    data[key] = [...data[key], value.trim()]
-    writeData(data)
-    return ok(data)
-  } catch (error) {
     return serverError(error)
   }
 }
 
-// DELETE /api/master  — body: { type, value }
+// DELETE /api/master — admin만 허용
 export async function DELETE(request: NextRequest) {
+  const authError = await requireRoles(request, ['ADMIN'])
+  if (authError) return authError
   try {
     const { type, value } = await request.json()
+
     if (!VALID_KEYS.includes(type as MasterKey) || !value) {
-      return badRequest('type and value are required')
+      return badRequest('type과 value는 필수입니다.')
     }
-    const data = readData()
-    const key = type as MasterKey
-    data[key] = data[key].filter((v) => v !== value)
-    writeData(data)
-    return ok(data)
+
+    await prisma.masterItem.deleteMany({
+      where: { type: type as MasterKey, value },
+    })
+
+    return GET()
   } catch (error) {
     return serverError(error)
   }

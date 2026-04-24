@@ -1,7 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Search, Upload, Download, FileSignature, PlusCircle, Printer, Filter } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import {
+  Search, Upload, Download, FileSignature, PlusCircle,
+  Printer, Filter, ChevronLeft, ChevronRight,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
 import { ASSET_STATUS_LABEL, ASSET_CATEGORY_LABEL, formatCurrency } from '@/lib/utils'
@@ -10,18 +13,9 @@ import BulkUploadModal from './BulkUploadModal'
 import AssetCreateModal from './AssetCreateModal'
 import AssetDetailModal from './AssetDetailModal'
 import ApprovalDraftModal from './ApprovalDraftModal'
+import type { ApiAsset, PaginatedAssets } from '@/types'
 
-interface ApiAsset {
-  id: string
-  code: string
-  name: string
-  category: string
-  department: string
-  location: string
-  status: string
-  price: string | number
-  acquiredDate: string
-}
+const LIMIT = 50
 
 const STATUS_COLOR: Record<string, string> = {
   IN_USE:            'bg-blue-100 text-blue-800 border-blue-200',
@@ -36,84 +30,114 @@ const SELECT_CLS = 'border border-slate-300 dark:border-slate-600 text-sm rounde
 export default function AssetLedger() {
   const { currentUser, canManageAssets, isEmployee } = useUser()
 
-  const [assets, setAssets] = useState<ApiAsset[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-  const [filterCategory, setFilterCategory] = useState('')
-  const [filterDept, setFilterDept] = useState('')
+  // ── 데이터 상태 ──────────────────────────────────────────────────────────────
+  const [assets, setAssets]         = useState<ApiAsset[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [page, setPage]             = useState(1)
+  const [total, setTotal]           = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const [deptOptions, setDeptOptions] = useState<string[]>([])
   const [selectedIds, setSelectedIds] = useState<string[]>([])
 
-  const [isUploadOpen, setIsUploadOpen] = useState(false)
-  const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [detailAssetId, setDetailAssetId] = useState<string | null>(null)
-  const [isDraftOpen, setIsDraftOpen] = useState(false)
+  // ── 검색 / 필터 상태 ─────────────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery]       = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [filterStatus, setFilterStatus]     = useState('')
+  const [filterCategory, setFilterCategory] = useState('')
+  const [filterDept, setFilterDept]         = useState('')
 
-  const fetchAssets = () => {
+  // ── 모달 상태 ────────────────────────────────────────────────────────────────
+  const [isUploadOpen, setIsUploadOpen]     = useState(false)
+  const [isCreateOpen, setIsCreateOpen]     = useState(false)
+  const [detailAssetId, setDetailAssetId]   = useState<string | null>(null)
+  const [isDraftOpen, setIsDraftOpen]       = useState(false)
+
+  // ── 검색 debounce (400ms) ────────────────────────────────────────────────────
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 400)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  // ── 쿼리 파라미터 빌더 ───────────────────────────────────────────────────────
+  const buildParams = useCallback((pageNum: number, overrideLimit?: number) => {
+    const params = new URLSearchParams()
+    if (debouncedSearch) params.set('q', debouncedSearch)
+    if (filterStatus)    params.set('status', filterStatus)
+    if (filterCategory)  params.set('category', filterCategory)
+    // manager: 서버에서 본인 부서만 반환
+    const dept = currentUser.role === 'manager' ? currentUser.department : filterDept
+    if (dept) params.set('department', dept)
+    params.set('page',  String(pageNum))
+    params.set('limit', String(overrideLimit ?? LIMIT))
+    return params
+  }, [debouncedSearch, filterStatus, filterCategory, filterDept, currentUser])
+
+  // ── 자산 목록 패치 ───────────────────────────────────────────────────────────
+  const fetchAssets = useCallback((pageNum = 1) => {
     setLoading(true)
-    fetch('/api/assets')
+    fetch(`/api/assets?${buildParams(pageNum)}`)
       .then((r) => r.json())
-      .then((data: unknown) => {
-        const list: ApiAsset[] = Array.isArray(data) ? data : []
-        const filtered = currentUser.role === 'manager'
-          ? list.filter((a) => a.department === currentUser.department)
-          : list
-        setAssets(filtered)
+      .then((res: PaginatedAssets) => {
+        setAssets(Array.isArray(res.data) ? res.data : [])
+        setTotal(res.total ?? 0)
+        setTotalPages(res.totalPages ?? 1)
+        setPage(pageNum)
+        if (res.departments?.length) setDeptOptions(res.departments)
       })
       .catch(() => toast.error('자산 목록을 불러오지 못했습니다.'))
       .finally(() => setLoading(false))
+  }, [buildParams])
+
+  // 필터 변경 시 1페이지로 리셋
+  useEffect(() => {
+    setSelectedIds([])
+    fetchAssets(1)
+  }, [fetchAssets])
+
+  // ── 페이지 이동 ──────────────────────────────────────────────────────────────
+  const goToPage = (pageNum: number) => {
+    if (pageNum < 1 || pageNum > totalPages || loading) return
+    setSelectedIds([])
+    fetchAssets(pageNum)
   }
 
-  useEffect(() => { fetchAssets() }, [currentUser])
-
-  // 부서 목록 동적 추출
-  const deptOptions = useMemo(
-    () => Array.from(new Set(assets.map((a) => a.department))).sort(),
-    [assets]
-  )
-
-  const filteredAssets = useMemo(() =>
-    assets.filter((a) => {
-      const q = searchQuery.toLowerCase()
-      const matchSearch = !q || a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q)
-      const matchStatus   = !filterStatus   || a.status === filterStatus
-      const matchCategory = !filterCategory || a.category === filterCategory
-      const matchDept     = !filterDept     || a.department === filterDept
-      return matchSearch && matchStatus && matchCategory && matchDept
-    }),
-    [assets, searchQuery, filterStatus, filterCategory, filterDept]
-  )
-
-  const toggleAll = () => {
-    setSelectedIds(selectedIds.length === filteredAssets.length ? [] : filteredAssets.map((a) => a.id))
-  }
-
-  const toggleOne = (id: string) => {
+  // ── 체크박스 ─────────────────────────────────────────────────────────────────
+  const toggleAll = () =>
+    setSelectedIds(selectedIds.length === assets.length ? [] : assets.map((a) => a.id))
+  const toggleOne = (id: string) =>
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+
+  // ── CSV 다운로드 (현재 필터 기준 전체) ───────────────────────────────────────
+  const handleDownload = async () => {
+    try {
+      const res  = await fetch(`/api/assets?${buildParams(1, 9999)}`)
+      const json = await res.json() as PaginatedAssets
+      const list = json.data ?? []
+      const header = ['자산코드', '자산명', '품목', '부서', '위치', '상태', '취득가액', '취득일']
+      const rows = list.map((a) => [
+        a.code, a.name,
+        ASSET_CATEGORY_LABEL[a.category] ?? a.category,
+        a.department, a.location,
+        ASSET_STATUS_LABEL[a.status] ?? a.status,
+        Number(a.price).toLocaleString(),
+        a.acquiredDate?.split('T')[0] ?? '',
+      ])
+      const csv  = [header, ...rows].map((r) => r.join(',')).join('\n')
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href = url; a.download = '자산원장.csv'; a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('다운로드에 실패했습니다.')
+    }
   }
 
-  const handleDownload = () => {
-    const header = ['자산코드', '자산명', '품목', '부서', '위치', '상태', '취득가액', '취득일']
-    const rows = filteredAssets.map((a) => [
-      a.code, a.name,
-      ASSET_CATEGORY_LABEL[a.category] ?? a.category,
-      a.department, a.location,
-      ASSET_STATUS_LABEL[a.status] ?? a.status,
-      Number(a.price).toLocaleString(),
-      a.acquiredDate?.split('T')[0] ?? '',
-    ])
-    const csv = [header, ...rows].map((r) => r.join(',')).join('\n')
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = '자산원장.csv'; a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const selectedAssets = assets.filter((a) => selectedIds.includes(a.id))
+  const selectedAssets   = assets.filter((a) => selectedIds.includes(a.id))
   const activeFilterCount = [filterStatus, filterCategory, filterDept].filter(Boolean).length
+  const isManager         = currentUser.role === 'manager'
 
-  // 테이블 행 Skeleton — 실제 테이블 레이아웃 유지
+  // ── Skeleton 행 ─────────────────────────────────────────────────────────────
   const skeletonRows = Array.from({ length: 7 }).map((_, i) => (
     <tr key={i} className="border-b border-slate-100">
       <td className="px-4 py-3.5"><Skeleton className="w-4 h-4" /></td>
@@ -132,7 +156,7 @@ export default function AssetLedger() {
   return (
     <div className="h-full flex flex-col bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
 
-      {/* 툴바 */}
+      {/* ── 툴바 ────────────────────────────────────────────────────────────── */}
       <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-col gap-3 bg-slate-50/50 dark:bg-slate-900/50 print:hidden">
         {/* 1행: 검색 + 버튼들 */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -202,12 +226,15 @@ export default function AssetLedger() {
               <option key={k} value={k}>{v}</option>
             ))}
           </select>
-          <select value={filterDept} onChange={(e) => setFilterDept(e.target.value)} className={SELECT_CLS}>
-            <option value="">전체 부서</option>
-            {deptOptions.map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
+          {/* manager는 본인 부서만 조회 → 드롭다운 숨김 */}
+          {!isManager && (
+            <select value={filterDept} onChange={(e) => setFilterDept(e.target.value)} className={SELECT_CLS}>
+              <option value="">전체 부서</option>
+              {deptOptions.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          )}
           {activeFilterCount > 0 && (
             <button
               onClick={() => { setFilterStatus(''); setFilterCategory(''); setFilterDept('') }}
@@ -234,13 +261,15 @@ export default function AssetLedger() {
               </div>
             ))}
           </div>
-        ) : filteredAssets.length === 0 ? (
+        ) : assets.length === 0 ? (
           <div className="flex items-center justify-center py-16 text-slate-400 text-sm">
-            {assets.length === 0 ? '등록된 자산이 없습니다.' : '검색/필터 조건에 맞는 자산이 없습니다.'}
+            {total === 0 && !debouncedSearch && activeFilterCount === 0
+              ? '등록된 자산이 없습니다.'
+              : '검색/필터 조건에 맞는 자산이 없습니다.'}
           </div>
         ) : (
           <div className="p-3 space-y-2">
-            {filteredAssets.map((asset) => (
+            {assets.map((asset) => (
               <div
                 key={asset.id}
                 onClick={() => setDetailAssetId(asset.id)}
@@ -295,7 +324,12 @@ export default function AssetLedger() {
           <thead className="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-900/50 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-4 w-10 print:hidden">
-                <input type="checkbox" onChange={toggleAll} checked={filteredAssets.length > 0 && selectedIds.length === filteredAssets.length} className="w-4 h-4 cursor-pointer" />
+                <input
+                  type="checkbox"
+                  onChange={toggleAll}
+                  checked={assets.length > 0 && selectedIds.length === assets.length}
+                  className="w-4 h-4 cursor-pointer"
+                />
               </th>
               <th className="px-6 py-4 font-semibold">상태</th>
               <th className="px-6 py-4 font-semibold">자산코드</th>
@@ -306,11 +340,15 @@ export default function AssetLedger() {
             </tr>
           </thead>
           <tbody>
-            {loading ? skeletonRows : filteredAssets.map((asset) => (
+            {loading ? skeletonRows : assets.map((asset) => (
               <tr
                 key={asset.id}
                 onClick={() => setDetailAssetId(asset.id)}
-                className={`border-b border-slate-100 dark:border-slate-700 transition-colors cursor-pointer ${selectedIds.includes(asset.id) ? 'bg-blue-50/60 dark:bg-blue-900/20' : 'bg-white dark:bg-slate-800 hover:bg-slate-50/80 dark:hover:bg-slate-700/50'}`}
+                className={`border-b border-slate-100 dark:border-slate-700 transition-colors cursor-pointer ${
+                  selectedIds.includes(asset.id)
+                    ? 'bg-blue-50/60 dark:bg-blue-900/20'
+                    : 'bg-white dark:bg-slate-800 hover:bg-slate-50/80 dark:hover:bg-slate-700/50'
+                }`}
               >
                 <td className="px-4 py-3 print:hidden" onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" checked={selectedIds.includes(asset.id)} onChange={() => toggleOne(asset.id)} className="w-4 h-4 cursor-pointer" />
@@ -329,65 +367,104 @@ export default function AssetLedger() {
                     size="md"
                   />
                 </td>
-                <td className="px-6 py-3 font-semibold text-slate-900">{asset.name}</td>
+                <td className="px-6 py-3 font-semibold text-slate-900 dark:text-slate-100">{asset.name}</td>
                 <td className="px-6 py-3 text-xs">
-                  <span className="font-medium text-slate-700">{asset.department}</span>
+                  <span className="font-medium text-slate-700 dark:text-slate-300">{asset.department}</span>
                   <br />
                   <span className="text-slate-400">{asset.location}</span>
                 </td>
                 {!isEmployee && (
-                  <td className="px-6 py-3 text-right font-bold text-slate-800">
+                  <td className="px-6 py-3 text-right font-bold text-slate-800 dark:text-slate-100">
                     {formatCurrency(Number(asset.price))}
                   </td>
                 )}
               </tr>
             ))}
-            {!loading && filteredAssets.length === 0 && (
+            {!loading && assets.length === 0 && (
               <EmptyTableRow
                 colSpan={isEmployee ? 6 : 7}
-                message={assets.length === 0
-                  ? '등록된 자산이 없습니다. 자산 등록 또는 엑셀 업로드로 추가해보세요.'
-                  : '검색/필터 조건에 맞는 자산이 없습니다.'}
+                message={
+                  total === 0 && !debouncedSearch && activeFilterCount === 0
+                    ? '등록된 자산이 없습니다. 자산 등록 또는 엑셀 업로드로 추가해보세요.'
+                    : '검색/필터 조건에 맞는 자산이 없습니다.'
+                }
               />
             )}
           </tbody>
         </table>
       </div>
 
-      <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 text-xs text-slate-400 dark:text-slate-500">
-        {loading ? (
-          <Skeleton className="h-3 w-24" />
-        ) : (
-          <>
-            총 {filteredAssets.length}건
-            {assets.length !== filteredAssets.length && ` (전체 ${assets.length}건 중 필터 적용)`}
-            {selectedIds.length > 0 && ` · ${selectedIds.length}건 선택됨`}
-          </>
+      {/* ── 하단 바: 총 건수 + 페이지네이션 ──────────────────────────────────── */}
+      <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between gap-4 print:hidden">
+        <span className="text-xs text-slate-400 dark:text-slate-500">
+          {loading ? (
+            <Skeleton className="h-3 w-32" />
+          ) : (
+            <>
+              총 {total.toLocaleString()}건
+              {selectedIds.length > 0 && ` · ${selectedIds.length}건 선택됨`}
+            </>
+          )}
+        </span>
+
+        {/* 페이지네이션 컨트롤 */}
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => goToPage(1)}
+              disabled={page <= 1 || loading}
+              className="px-2 py-1 text-xs rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-slate-600 dark:text-slate-400"
+            >
+              처음
+            </button>
+            <button
+              onClick={() => goToPage(page - 1)}
+              disabled={page <= 1 || loading}
+              className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+            </button>
+            <span className="text-xs font-mono text-slate-600 dark:text-slate-400 px-2 min-w-[4rem] text-center">
+              {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => goToPage(page + 1)}
+              disabled={page >= totalPages || loading}
+              className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+            </button>
+            <button
+              onClick={() => goToPage(totalPages)}
+              disabled={page >= totalPages || loading}
+              className="px-2 py-1 text-xs rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-slate-600 dark:text-slate-400"
+            >
+              마지막
+            </button>
+          </div>
         )}
       </div>
 
+      {/* ── 모달 ────────────────────────────────────────────────────────────── */}
       {isUploadOpen && (
         <BulkUploadModal
           onClose={() => setIsUploadOpen(false)}
-          onSuccess={(count) => { fetchAssets(); toast.success(`${count}건이 등록되었습니다.`) }}
+          onSuccess={(count) => { fetchAssets(1); toast.success(`${count}건이 등록되었습니다.`) }}
         />
       )}
-
       {isCreateOpen && (
         <AssetCreateModal
           onClose={() => setIsCreateOpen(false)}
-          onSuccess={() => { fetchAssets() }}
+          onSuccess={() => { fetchAssets(1) }}
         />
       )}
-
       {detailAssetId && (
         <AssetDetailModal
           assetId={detailAssetId}
           onClose={() => setDetailAssetId(null)}
-          onUpdated={fetchAssets}
+          onUpdated={() => fetchAssets(page)}
         />
       )}
-
       {isDraftOpen && (
         <ApprovalDraftModal
           selectedAssets={selectedAssets}

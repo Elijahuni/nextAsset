@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { badRequest, created, ok, serverError } from '@/lib/api-response'
 import { AssetCategory, AssetStatus } from '@/generated/prisma/enums'
+import { requireRoles } from '@/lib/rbac'
 
 const CreateAssetSchema = z.object({
   code:         z.string().min(1, '자산코드는 필수입니다.'),
@@ -17,32 +18,78 @@ const CreateAssetSchema = z.object({
 })
 
 // GET /api/assets
+// ?q=검색어&status=&category=&department=&page=1&limit=50
+// ▸ page 파라미터가 없으면 전체 배열 반환 (Dashboard 하위 호환)
+// ▸ page 파라미터가 있으면 페이지네이션 객체 반환
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
     const department = searchParams.get('department') ?? undefined
-    const status = searchParams.get('status') as AssetStatus | null
-    const category = searchParams.get('category') as AssetCategory | null
+    const status     = searchParams.get('status') as AssetStatus | null
+    const category   = searchParams.get('category') as AssetCategory | null
+    const q          = searchParams.get('q')?.trim() ?? ''
 
-    const assets = await prisma.asset.findMany({
-      where: {
-        ...(department && { department }),
-        ...(status && { status }),
-        ...(category && { category }),
-      },
-      orderBy: { createdAt: 'desc' },
+    const where = {
+      deletedAt: null,           // 소프트 삭제된 자산 제외
+      ...(q && {
+        OR: [
+          { name: { contains: q, mode: 'insensitive' as const } },
+          { code: { contains: q, mode: 'insensitive' as const } },
+        ],
+      }),
+      ...(department && { department }),
+      ...(status     && { status }),
+      ...(category   && { category }),
+    }
+
+    // ── 하위 호환: page 파라미터 없으면 전체 배열 반환 ─────────────────
+    if (!searchParams.has('page')) {
+      const assets = await prisma.asset.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+      })
+      return ok(assets)
+    }
+
+    // ── 페이지네이션 ──────────────────────────────────────────────────
+    const page  = Math.max(1, Number(searchParams.get('page')  ?? '1'))
+    const limit = Math.min(200, Math.max(1, Number(searchParams.get('limit') ?? '50')))
+
+    const [total, data, allDepts] = await prisma.$transaction([
+      prisma.asset.count({ where }),
+      prisma.asset.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      // 부서 목록 전체 조회 (필터 드롭다운용, 페이지네이션 무관)
+      prisma.asset.findMany({
+        select:   { department: true },
+        distinct: ['department'],
+        orderBy:  { department: 'asc' },
+      }),
+    ])
+
+    return ok({
+      data,
+      total,
+      page,
+      limit,
+      totalPages:  Math.ceil(total / limit) || 1,
+      departments: allDepts.map((d) => d.department),
     })
-
-    return ok(assets)
   } catch (error) {
     return serverError(error)
   }
 }
 
-// POST /api/assets
+// POST /api/assets — admin, manager만 허용
 export async function POST(request: NextRequest) {
+  const authError = await requireRoles(request, ['ADMIN', 'MANAGER'])
+  if (authError) return authError
   try {
-    const body = await request.json()
+    const body   = await request.json()
     const parsed = CreateAssetSchema.safeParse(body)
     if (!parsed.success) {
       return badRequest(parsed.error.issues.map((e: { message: string }) => e.message).join(', '))
@@ -58,7 +105,7 @@ export async function POST(request: NextRequest) {
         location,
         price,
         acquiredDate: new Date(acquiredDate),
-        ...(barcode && { barcode }),
+        ...(barcode      && { barcode }),
         ...(warrantyDate && { warrantyDate: new Date(warrantyDate) }),
       },
     })
