@@ -9,15 +9,16 @@ import { Modal } from '@/components/ui'
 
 // ─── Zod 스키마 (서버 CreateAssetSchema와 동일) ───────────────────────────────
 const schema = z.object({
-  code:         z.string().min(1, '자산코드를 입력해주세요.'),
-  name:         z.string().min(1, '자산명을 입력해주세요.'),
+  code:         z.string().min(1, '자산관리번호를 입력해주세요.'),
+  name:         z.string().min(1, '품명을 입력해주세요.'),
   category:     z.string().min(1),
   price:        z.number({ message: '숫자를 입력해주세요.' }).nonnegative('0 이상 입력해주세요.'),
-  department:   z.string().min(1, '부서를 입력해주세요.'),
+  department:   z.string().min(1, '사업장을 입력해주세요.'),
   location:     z.string().min(1, '위치를 입력해주세요.'),
   acquiredDate: z.string().min(1, '취득일을 선택해주세요.'),
   warrantyDate: z.string().optional(),
   barcode:      z.string().optional(),
+  remarks:      z.string().optional(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -56,6 +57,7 @@ export default function AssetCreateModal({ onClose, onSuccess }: Props) {
       acquiredDate: TODAY,
       warrantyDate: '',
       barcode:      '',
+      remarks:      '',
     },
   })
 
@@ -66,7 +68,8 @@ export default function AssetCreateModal({ onClose, onSuccess }: Props) {
       body: JSON.stringify({
         ...data,
         ...(data.warrantyDate && { warrantyDate: data.warrantyDate }),
-        ...(data.barcode       && { barcode: data.barcode }),
+        ...(data.barcode      && { barcode:      data.barcode }),
+        ...(data.remarks      && { remarks:      data.remarks }),
       }),
     })
     const json = await res.json()
@@ -230,6 +233,19 @@ export default function AssetCreateModal({ onClose, onSuccess }: Props) {
             {...register('barcode')}
             placeholder="제품 시리얼번호"
             className={`${INPUT_CLS} border-slate-300`}
+          />
+        </div>
+
+        {/* 비고 */}
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+            비고 (선택)
+          </label>
+          <textarea
+            {...register('remarks')}
+            placeholder="특이사항, 지급 부서, 메모 등"
+            rows={2}
+            className={`${INPUT_CLS} border-slate-300 resize-none`}
           />
         </div>
 

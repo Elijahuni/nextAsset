@@ -16,6 +16,7 @@ const CreateAssetSchema = z.object({
   acquiredDate: z.string().min(1, '취득일은 필수입니다.'),
   barcode:      z.string().optional(),
   warrantyDate: z.string().optional(),
+  remarks:      z.string().optional(),
 })
 
 // GET /api/assets
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return badRequest(parsed.error.issues.map((e: { message: string }) => e.message).join(', '))
     }
-    const { code, name, category, department, location, price, acquiredDate, barcode, warrantyDate } = parsed.data
+    const { code, name, category, department, location, price, acquiredDate, barcode, warrantyDate, remarks } = parsed.data
 
     const asset = await prisma.asset.create({
       data: {
@@ -115,6 +116,7 @@ export async function POST(request: NextRequest) {
         acquiredDate: new Date(acquiredDate),
         ...(barcode      && { barcode }),
         ...(warrantyDate && { warrantyDate: new Date(warrantyDate) }),
+        ...(remarks      && { remarks }),
       },
     })
 

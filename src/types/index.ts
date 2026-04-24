@@ -17,6 +17,7 @@ export interface ApiAsset {
   acquiredDate: string
   warrantyDate?: string | null
   barcode?:     string | null
+  remarks?:     string | null   // 비고 (TW-AMS 호환)
   deletedAt?:   string | null
   createdAt?:   string
   updatedAt?:   string

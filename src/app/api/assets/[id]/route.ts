@@ -38,7 +38,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const existing = await prisma.asset.findUnique({ where: { id } })
     if (!existing || existing.deletedAt) return notFound('Asset')
 
-    const { name, category, department, location, status, price, acquiredDate, warrantyDate, barcode } = body
+    const { name, category, department, location, status, price, acquiredDate, warrantyDate, barcode, remarks } = body
 
     const asset = await prisma.asset.update({
       where: { id },
@@ -51,7 +51,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         ...(price != null && { price }),
         ...(acquiredDate && { acquiredDate: new Date(acquiredDate) }),
         ...(warrantyDate !== undefined && { warrantyDate: warrantyDate ? new Date(warrantyDate) : null }),
-        ...(barcode !== undefined      && { barcode: barcode || null }),
+        ...(barcode  !== undefined     && { barcode:  barcode  || null }),
+        ...(remarks  !== undefined     && { remarks:  remarks  || null }),
       },
     })
 
