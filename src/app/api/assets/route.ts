@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { badRequest, created, ok, serverError } from '@/lib/api-response'
 import { AssetCategory, AssetStatus } from '@/generated/prisma/enums'
+import { statusGroupToEnums } from '@/lib/utils'
 import { requireRoles } from '@/lib/rbac'
 
 const CreateAssetSchema = z.object({
@@ -15,6 +16,7 @@ const CreateAssetSchema = z.object({
   acquiredDate: z.string().min(1, '취득일은 필수입니다.'),
   barcode:      z.string().optional(),
   warrantyDate: z.string().optional(),
+  remarks:      z.string().optional(),
 })
 
 // GET /api/assets
@@ -24,10 +26,13 @@ const CreateAssetSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
-    const department = searchParams.get('department') ?? undefined
-    const status     = searchParams.get('status') as AssetStatus | null
-    const category   = searchParams.get('category') as AssetCategory | null
-    const q          = searchParams.get('q')?.trim() ?? ''
+    const department  = searchParams.get('department') ?? undefined
+    const status      = searchParams.get('status') as AssetStatus | null
+    const category    = searchParams.get('category') as AssetCategory | null
+    const q           = searchParams.get('q')?.trim() ?? ''
+    // TW-AMS 호환: ?active=active|inactive → 상태 그룹 필터
+    const activeGroup = searchParams.get('active') as 'active' | 'inactive' | null
+    const activeEnums = activeGroup ? statusGroupToEnums(activeGroup) : []
 
     const where = {
       deletedAt: null,           // 소프트 삭제된 자산 제외
@@ -35,10 +40,14 @@ export async function GET(request: NextRequest) {
         OR: [
           { name: { contains: q, mode: 'insensitive' as const } },
           { code: { contains: q, mode: 'insensitive' as const } },
+          // 사업장(department) · 시리얼번호(barcode) 검색 포함
+          { department: { contains: q, mode: 'insensitive' as const } },
+          { barcode:    { contains: q, mode: 'insensitive' as const } },
         ],
       }),
       ...(department && { department }),
-      ...(status     && { status }),
+      // 개별 상태 vs 그룹 상태 — 둘 다 있으면 개별 우선
+      ...(status      ? { status } : activeEnums.length ? { status: { in: activeEnums as AssetStatus[] } } : {}),
       ...(category   && { category }),
     }
 
@@ -94,7 +103,7 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return badRequest(parsed.error.issues.map((e: { message: string }) => e.message).join(', '))
     }
-    const { code, name, category, department, location, price, acquiredDate, barcode, warrantyDate } = parsed.data
+    const { code, name, category, department, location, price, acquiredDate, barcode, warrantyDate, remarks } = parsed.data
 
     const asset = await prisma.asset.create({
       data: {
@@ -107,6 +116,7 @@ export async function POST(request: NextRequest) {
         acquiredDate: new Date(acquiredDate),
         ...(barcode      && { barcode }),
         ...(warrantyDate && { warrantyDate: new Date(warrantyDate) }),
+        ...(remarks      && { remarks }),
       },
     })
 

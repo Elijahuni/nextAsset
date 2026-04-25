@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
-import { ASSET_STATUS_LABEL, ASSET_CATEGORY_LABEL, formatCurrency } from '@/lib/utils'
+import { ASSET_STATUS_LABEL, ASSET_CATEGORY_LABEL, formatCurrency, getActiveLabel } from '@/lib/utils'
 import { Skeleton, Badge, EmptyTableRow } from '@/components/ui'
 import BulkUploadModal from './BulkUploadModal'
 import AssetCreateModal from './AssetCreateModal'
@@ -40,11 +40,12 @@ export default function AssetLedger() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
 
   // ── 검색 / 필터 상태 ─────────────────────────────────────────────────────────
-  const [searchQuery, setSearchQuery]       = useState('')
+  const [searchQuery, setSearchQuery]         = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [filterStatus, setFilterStatus]     = useState('')
-  const [filterCategory, setFilterCategory] = useState('')
-  const [filterDept, setFilterDept]         = useState('')
+  const [filterStatus, setFilterStatus]       = useState('')
+  const [filterActive, setFilterActive]       = useState('') // 'active' | 'inactive' | ''
+  const [filterCategory, setFilterCategory]   = useState('')
+  const [filterDept, setFilterDept]           = useState('')
 
   // ── 모달 상태 ────────────────────────────────────────────────────────────────
   const [isUploadOpen, setIsUploadOpen]     = useState(false)
@@ -62,7 +63,9 @@ export default function AssetLedger() {
   const buildParams = useCallback((pageNum: number, overrideLimit?: number) => {
     const params = new URLSearchParams()
     if (debouncedSearch) params.set('q', debouncedSearch)
+    // 개별 상태 필터와 active/inactive 그룹 필터는 상호 배타적
     if (filterStatus)    params.set('status', filterStatus)
+    else if (filterActive) params.set('active', filterActive)
     if (filterCategory)  params.set('category', filterCategory)
     // manager: 서버에서 본인 부서만 반환
     const dept = currentUser.role === 'manager' ? currentUser.department : filterDept
@@ -70,7 +73,7 @@ export default function AssetLedger() {
     params.set('page',  String(pageNum))
     params.set('limit', String(overrideLimit ?? LIMIT))
     return params
-  }, [debouncedSearch, filterStatus, filterCategory, filterDept, currentUser])
+  }, [debouncedSearch, filterStatus, filterActive, filterCategory, filterDept, currentUser])
 
   // ── 자산 목록 패치 ───────────────────────────────────────────────────────────
   const fetchAssets = useCallback((pageNum = 1) => {
@@ -134,7 +137,7 @@ export default function AssetLedger() {
   }
 
   const selectedAssets   = assets.filter((a) => selectedIds.includes(a.id))
-  const activeFilterCount = [filterStatus, filterCategory, filterDept].filter(Boolean).length
+  const activeFilterCount = [filterStatus, filterActive, filterCategory, filterDept].filter(Boolean).length
   const isManager         = currentUser.role === 'manager'
 
   // ── Skeleton 행 ─────────────────────────────────────────────────────────────
@@ -214,8 +217,23 @@ export default function AssetLedger() {
         {/* 2행: 필터 드롭다운 */}
         <div className="flex items-center gap-2 flex-wrap">
           <Filter className="w-4 h-4 text-slate-400 shrink-0" />
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className={SELECT_CLS}>
-            <option value="">전체 상태</option>
+          {/* 활성/비활성 그룹 필터 (TW-AMS active/inactive 호환) */}
+          <select
+            value={filterActive}
+            onChange={(e) => { setFilterActive(e.target.value); setFilterStatus('') }}
+            className={SELECT_CLS}
+          >
+            <option value="">활성/비활성 전체</option>
+            <option value="active">활성 (운용 중)</option>
+            <option value="inactive">비활성 (운용 종료)</option>
+          </select>
+          {/* 세부 상태 필터 */}
+          <select
+            value={filterStatus}
+            onChange={(e) => { setFilterStatus(e.target.value); setFilterActive('') }}
+            className={SELECT_CLS}
+          >
+            <option value="">세부 상태 전체</option>
             {Object.entries(ASSET_STATUS_LABEL).map(([k, v]) => (
               <option key={k} value={k}>{v}</option>
             ))}
@@ -237,7 +255,7 @@ export default function AssetLedger() {
           )}
           {activeFilterCount > 0 && (
             <button
-              onClick={() => { setFilterStatus(''); setFilterCategory(''); setFilterDept('') }}
+              onClick={() => { setFilterStatus(''); setFilterActive(''); setFilterCategory(''); setFilterDept('') }}
               className="text-xs font-semibold text-red-500 hover:text-red-700 px-2 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
             >
               필터 초기화 ({activeFilterCount})
@@ -303,7 +321,7 @@ export default function AssetLedger() {
                       label={ASSET_CATEGORY_LABEL[asset.category] ?? asset.category}
                     />
                     <span className="text-xs text-slate-400 dark:text-slate-500">
-                      {asset.department} · {asset.location}
+                      {asset.department} · {asset.location ?? '-'}
                     </span>
                   </div>
                   {!isEmployee && (
@@ -332,10 +350,10 @@ export default function AssetLedger() {
                 />
               </th>
               <th className="px-6 py-4 font-semibold">상태</th>
-              <th className="px-6 py-4 font-semibold">자산코드</th>
-              <th className="px-6 py-4 font-semibold">품목</th>
-              <th className="px-6 py-4 font-semibold">자산명칭</th>
-              <th className="px-6 py-4 font-semibold">부서 / 위치</th>
+              <th className="px-6 py-4 font-semibold">자산관리번호</th>
+              <th className="px-6 py-4 font-semibold">분류</th>
+              <th className="px-6 py-4 font-semibold">품명</th>
+              <th className="px-6 py-4 font-semibold">사업장 / 상세위치</th>
               {!isEmployee && <th className="px-6 py-4 font-semibold text-right">취득가액</th>}
             </tr>
           </thead>
@@ -358,6 +376,13 @@ export default function AssetLedger() {
                     colorClass={STATUS_COLOR[asset.status] ?? 'bg-slate-100 text-slate-600 border-slate-200'}
                     label={ASSET_STATUS_LABEL[asset.status] ?? asset.status}
                   />
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${
+                    getActiveLabel(asset.status) === '활성'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-slate-100 text-slate-500 border-slate-200'
+                  }`}>
+                    {getActiveLabel(asset.status)}
+                  </span>
                 </td>
                 <td className="px-6 py-3 font-mono text-xs text-slate-500">{asset.code}</td>
                 <td className="px-6 py-3">
@@ -371,7 +396,7 @@ export default function AssetLedger() {
                 <td className="px-6 py-3 text-xs">
                   <span className="font-medium text-slate-700 dark:text-slate-300">{asset.department}</span>
                   <br />
-                  <span className="text-slate-400">{asset.location}</span>
+                  <span className="text-slate-400">{asset.location ?? '-'}</span>
                 </td>
                 {!isEmployee && (
                   <td className="px-6 py-3 text-right font-bold text-slate-800 dark:text-slate-100">

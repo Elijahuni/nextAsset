@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { RefreshCcw, Wrench, History, Info, ShieldAlert, CheckCircle } from 'lucide-react'
+import { RefreshCcw, Wrench, History, Info, ShieldAlert, CheckCircle, Pencil, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
-import { ASSET_CATEGORY_LABEL, ASSET_STATUS_LABEL, formatCurrency, getWarrantyStatus } from '@/lib/utils'
+import { ASSET_CATEGORY_LABEL, ASSET_STATUS_LABEL, formatCurrency, getWarrantyStatus, getActiveLabel } from '@/lib/utils'
 import { Modal } from '@/components/ui'
 
 interface HistoryLog {
@@ -35,6 +35,7 @@ interface AssetDetail {
   price: string | number
   acquiredDate: string
   warrantyDate: string | null
+  remarks: string | null
   historyLogs: HistoryLog[]
   maintenanceLogs: MaintenanceLog[]
 }
@@ -67,6 +68,58 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
   const [asset, setAsset] = useState<AssetDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('info')
+
+  // ── 기본정보 편집 모드 (view↔edit 토글) ─────────────────────────────────────
+  const [isEditing, setIsEditing]   = useState(false)
+  const [editForm, setEditForm]     = useState({
+    name: '', department: '', location: '', barcode: '', remarks: '',
+  })
+  const [editLoading, setEditLoading] = useState(false)
+
+  const startEdit = () => {
+    if (!asset) return
+    setEditForm({
+      name:       asset.name,
+      department: asset.department,
+      location:   asset.location,
+      barcode:    asset.barcode ?? '',
+      remarks:    asset.remarks ?? '',
+    })
+    setIsEditing(true)
+  }
+
+  const cancelEdit = () => setIsEditing(false)
+
+  const saveEdit = async () => {
+    if (!asset) return
+    setEditLoading(true)
+    try {
+      const res = await fetch(`/api/assets/${asset.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          name:       editForm.name       || undefined,
+          department: editForm.department || undefined,
+          location:   editForm.location   || undefined,
+          barcode:    editForm.barcode,
+          remarks:    editForm.remarks,
+        }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        toast.error(d.error ?? '저장 실패')
+        return
+      }
+      toast.success('자산 정보가 업데이트됐습니다.')
+      setIsEditing(false)
+      fetchAsset()
+      onUpdated()
+    } catch {
+      toast.error('서버 오류가 발생했습니다.')
+    } finally {
+      setEditLoading(false)
+    }
+  }
 
   // 유지보수 폼
   const [mForm, setMForm] = useState({ date: TODAY, vendor: '', cost: '', detail: '' })
@@ -169,9 +222,20 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
         </div>
       }
     >
-      {/* 자산코드 서브텍스트 */}
+      {/* 자산관리번호 + 활성/비활성 배지 */}
       {asset && (
-        <p className="text-xs font-mono text-slate-400 px-6 pt-3">{asset.code}</p>
+        <div className="flex items-center gap-2 px-6 pt-3">
+          <span className="text-xs font-mono bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-600 select-all">
+            {asset.code}
+          </span>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+            getActiveLabel(asset.status) === '활성'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-700'
+              : 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600'
+          }`}>
+            {getActiveLabel(asset.status)}
+          </span>
+        </div>
       )}
 
       {/* 탭 */}
@@ -204,33 +268,131 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
           <>
             {/* 기본정보 탭 */}
             {tab === 'info' && (
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { label: '자산코드', value: asset.code },
-                  { label: '품목', value: ASSET_CATEGORY_LABEL[asset.category] ?? asset.category },
-                  { label: '부서', value: asset.department },
-                  { label: '위치', value: asset.location },
-                  { label: '상태', value: ASSET_STATUS_LABEL[asset.status] ?? asset.status },
-                  { label: '취득가액', value: formatCurrency(Number(asset.price)) },
-                  { label: '취득일', value: asset.acquiredDate?.split('T')[0] ?? '-' },
-                  { label: '바코드', value: asset.barcode ?? '미설정' },
-                ].map(({ label, value }) => (
-                  <div key={label} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                    <p className="text-xs text-slate-400 font-medium mb-1">{label}</p>
-                    <p className="text-sm font-semibold text-slate-800">{value}</p>
+              <div className="space-y-3">
+                {/* 탭 헤더 — 수정 버튼 */}
+                {canManageAssets && (
+                  <div className="flex justify-end">
+                    {isEditing ? (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={cancelEdit}
+                          className="flex items-center px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5 mr-1" />취소
+                        </button>
+                        <button
+                          onClick={saveEdit}
+                          disabled={editLoading}
+                          className="flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                        >
+                          {editLoading
+                            ? <RefreshCcw className="w-3.5 h-3.5 mr-1 animate-spin" />
+                            : <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                          }
+                          저장
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={startEdit}
+                        className="flex items-center px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5 mr-1" />수정
+                      </button>
+                    )}
                   </div>
-                ))}
-                <div className="col-span-2 bg-slate-50 rounded-xl p-4 border border-slate-100">
-                  <p className="text-xs text-slate-400 font-medium mb-1">보증기간</p>
-                  {(() => {
-                    const ws = getWarrantyStatus(asset.warrantyDate)
-                    return (
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-md border ${ws.color}`}>
-                        {ws.text}
-                      </span>
-                    )
-                  })()}
+                )}
+
+                {/* 품명 — 최상단 강조 */}
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-100 dark:border-blue-800">
+                  <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mb-1">품명 (모델명)</p>
+                  {isEditing ? (
+                    <input
+                      value={editForm.name}
+                      onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
+                      className="w-full text-base font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-700 border border-blue-300 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-300"
+                    />
+                  ) : (
+                    <p className="text-base font-bold text-slate-900 dark:text-slate-100">{asset.name}</p>
+                  )}
                 </div>
+
+                {/* 2열 그리드 — 조회 모드 */}
+                {!isEditing && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: '분류코드',   value: ASSET_CATEGORY_LABEL[asset.category] ?? asset.category },
+                      { label: '상태',       value: ASSET_STATUS_LABEL[asset.status] ?? asset.status },
+                      { label: '사업장',     value: asset.department },
+                      { label: '상세위치/층', value: asset.location },
+                      { label: '취득가액',   value: formatCurrency(Number(asset.price)) },
+                      { label: '취득일',     value: asset.acquiredDate?.split('T')[0] ?? '-' },
+                      { label: '시리얼번호', value: asset.barcode ?? '미설정' },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3.5 border border-slate-100 dark:border-slate-600">
+                        <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-1">{label}</p>
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{value}</p>
+                      </div>
+                    ))}
+                    <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3.5 border border-slate-100 dark:border-slate-600">
+                      <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-1">보증기간</p>
+                      {(() => {
+                        const ws = getWarrantyStatus(asset.warrantyDate)
+                        return <span className={`text-xs font-bold px-2 py-0.5 rounded border ${ws.color}`}>{ws.text}</span>
+                      })()}
+                    </div>
+                    {asset.remarks && (
+                      <div className="col-span-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3.5 border border-amber-100 dark:border-amber-800">
+                        <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mb-1">비고</p>
+                        <p className="text-sm text-slate-700 dark:text-slate-200">{asset.remarks}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 수정 모드 — 편집 가능 필드 */}
+                {isEditing && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: '사업장',     key: 'department' as const, placeholder: '본사 / 3공장 / 수원연구소' },
+                      { label: '상세위치/층', key: 'location'   as const, placeholder: '3층 / A동 창고' },
+                      { label: '시리얼번호', key: 'barcode'    as const, placeholder: '제품 시리얼번호' },
+                    ].map(({ label, key, placeholder }) => (
+                      <div key={key} className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3.5 border border-slate-200 dark:border-slate-600">
+                        <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-1">{label}</p>
+                        <input
+                          value={editForm[key]}
+                          onChange={(e) => setEditForm((p) => ({ ...p, [key]: e.target.value }))}
+                          placeholder={placeholder}
+                          className="w-full text-sm font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-600 border border-slate-300 dark:border-slate-500 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-blue-300"
+                        />
+                      </div>
+                    ))}
+                    {/* 비고 — full width */}
+                    <div className="col-span-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3.5 border border-amber-200 dark:border-amber-800">
+                      <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mb-1">비고</p>
+                      <textarea
+                        value={editForm.remarks}
+                        onChange={(e) => setEditForm((p) => ({ ...p, remarks: e.target.value }))}
+                        placeholder="특이사항, 메모 등"
+                        rows={2}
+                        className="w-full text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-600 border border-amber-300 dark:border-amber-700 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-amber-300 resize-none"
+                      />
+                    </div>
+                    {/* 읽기전용 필드 표시 */}
+                    {[
+                      { label: '분류코드', value: ASSET_CATEGORY_LABEL[asset.category] ?? asset.category },
+                      { label: '상태',     value: ASSET_STATUS_LABEL[asset.status] ?? asset.status },
+                      { label: '취득가액', value: formatCurrency(Number(asset.price)) },
+                      { label: '취득일',   value: asset.acquiredDate?.split('T')[0] ?? '-' },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="bg-slate-100 dark:bg-slate-800 rounded-xl p-3.5 border border-slate-200 dark:border-slate-700 opacity-60">
+                        <p className="text-xs text-slate-400 font-medium mb-1">{label} <span className="text-[10px]">(읽기전용)</span></p>
+                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

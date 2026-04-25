@@ -86,6 +86,7 @@ model Asset {
   price        Decimal       @db.Decimal(12, 2)
   acquiredDate DateTime
   warrantyDate DateTime?
+  remarks      String?       // 비고 (TW-AMS remarks 호환)
   deletedAt    DateTime?     // 소프트 삭제: null이면 활성, 값이 있으면 삭제됨
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
