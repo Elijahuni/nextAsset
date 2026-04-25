@@ -46,17 +46,12 @@ export default function Header({ onMenuToggle }: HeaderProps) {
       .then((data: unknown[]) => setPendingCount(Array.isArray(data) ? data.length : 0))
       .catch(() => {})
 
-    fetch('/api/assets')
+    // warrantyExpiring=true: DB에서 30일 이내·만료 자산만 최대 20건 반환 — 전체 fetch 불필요
+    fetch('/api/assets?warrantyExpiring=true')
       .then((r) => r.json())
       .then((data: WarningAsset[]) => {
         if (!Array.isArray(data)) return
-        // 보증기간 만료됐거나 30일 이내 임박한 자산만
-        const filtered = data.filter((a) => {
-          if (!a.warrantyDate) return false
-          const ws = getWarrantyStatus(a.warrantyDate)
-          return ws.isExpired || ws.text.includes('임박')
-        })
-        setWarningAssets(filtered.slice(0, 10))
+        setWarningAssets(data.slice(0, 10))
       })
       .catch(() => {})
   }, [])

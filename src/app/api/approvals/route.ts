@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { badRequest, created, ok, serverError } from '@/lib/api-response'
 import { ApprovalStatus, ApprovalType } from '@/generated/prisma/enums'
-import { requireRoles, getRequestUser } from '@/lib/rbac'
+import type { Prisma } from '@/generated/prisma/client'
+import { getRequestUser } from '@/lib/rbac'
 
 const VALID_APPROVAL_STATUSES = new Set(Object.values(ApprovalStatus))
 const VALID_APPROVAL_TYPES    = new Set(Object.values(ApprovalType))
@@ -18,41 +19,64 @@ const CreateApprovalSchema = z.object({
 })
 
 // GET /api/approvals
-// Query params: status, type, applicantId, approverId, department
+// Query params (ADMIN only): status, type, applicantId, approverId
+// STAFF/MANAGER의 조회 범위는 서버에서 role 기반으로 강제 — 클라이언트 파라미터 무시 (IDOR 방지)
 export async function GET(request: NextRequest) {
-  const authError = await requireRoles(request, ['ADMIN', 'MANAGER', 'STAFF'])
-  if (authError) return authError
+  const sessionUser = await getRequestUser(request)
+  if (!sessionUser) {
+    return new Response(JSON.stringify({ error: '인증이 필요합니다.' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
   try {
     const { searchParams } = request.nextUrl
     const rawStatus = searchParams.get('status')
     const rawType   = searchParams.get('type')
-    // enum 화이트리스트 검증 — 잘못된 값은 무시
+    // enum 화이트리스트 검증
     const status = rawStatus && VALID_APPROVAL_STATUSES.has(rawStatus as ApprovalStatus) ? rawStatus as ApprovalStatus : null
     const type   = rawType   && VALID_APPROVAL_TYPES.has(rawType as ApprovalType)        ? rawType as ApprovalType    : undefined
-    const applicantId = searchParams.get('applicantId') ?? undefined
-    const approverId = searchParams.get('approverId') ?? undefined
-    const department = searchParams.get('department') ?? undefined
 
-    // manager용: 본인 부서 기안 OR 본인이 결재자인 건 (OR 조건)
-    const whereOr = department && approverId
-      ? {
-          OR: [
-            { applicant: { department } },
-            { approverId },
-          ],
-        }
-      : undefined
+    let where: Prisma.ApprovalWhereInput
 
-    const approvals = await prisma.approval.findMany({
-      where: whereOr ?? {
+    if (sessionUser.role === 'STAFF') {
+      // STAFF: 본인 기안만 조회 — applicantId 파라미터 무시
+      where = {
+        applicantId: sessionUser.id,
         ...(status && { status }),
         ...(type && { type }),
+      }
+    } else if (sessionUser.role === 'MANAGER') {
+      // MANAGER: 본인 부서 기안 OR 본인이 결재자인 건 + status/type 필터 적용 (AND)
+      where = {
+        AND: [
+          {
+            OR: [
+              { applicant: { department: sessionUser.department } },
+              { approverId: sessionUser.id },
+            ],
+          },
+          ...(status ? [{ status }] : []),
+          ...(type   ? [{ type }]   : []),
+        ],
+      }
+    } else {
+      // ADMIN: 전체 조회 허용, 클라이언트 파라미터 신뢰
+      const applicantId = searchParams.get('applicantId') ?? undefined
+      const approverId  = searchParams.get('approverId')  ?? undefined
+      where = {
+        ...(status      && { status }),
+        ...(type        && { type }),
         ...(applicantId && { applicantId }),
-        ...(approverId && { approverId }),
-      },
+        ...(approverId  && { approverId }),
+      }
+    }
+
+    const approvals = await prisma.approval.findMany({
+      where,
       include: {
         applicant: { select: { id: true, name: true, department: true } },
-        approver: { select: { id: true, name: true } },
+        approver:  { select: { id: true, name: true } },
         assets: {
           include: {
             asset: { select: { id: true, code: true, name: true, status: true } },

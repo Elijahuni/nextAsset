@@ -32,7 +32,7 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
 }
 
 export default function ApprovalsView() {
-  const { isEmployee, currentUser } = useUser()
+  const { isEmployee } = useUser()
   const [approvals, setApprovals] = useState<ApiApproval[]>([])
   const [loading, setLoading] = useState(true)
   const [detailId, setDetailId] = useState<string | null>(null)
@@ -40,22 +40,13 @@ export default function ApprovalsView() {
 
   const fetchApprovals = useCallback(() => {
     setLoading(true)
-    const params = new URLSearchParams()
-    if (isEmployee) {
-      // employee: 본인 기안만
-      params.set('applicantId', currentUser.id)
-    } else if (currentUser.role === 'manager') {
-      // manager: 본인 부서 기안 OR 본인이 결재자인 건
-      params.set('department', currentUser.department)
-      params.set('approverId', currentUser.id)
-    }
-    // admin: 전체 조회 (파라미터 없음)
-    fetch(`/api/approvals?${params.toString()}`)
+    // 조회 범위는 서버에서 role 기반으로 결정 — 클라이언트 파라미터 불필요
+    fetch('/api/approvals')
       .then((r) => r.json())
       .then((data: ApiApproval[]) => setApprovals(Array.isArray(data) ? data : []))
       .catch(() => toast.error('결재 목록을 불러오지 못했습니다.'))
       .finally(() => setLoading(false))
-  }, [isEmployee, currentUser.id])
+  }, [])
 
   useEffect(() => { fetchApprovals() }, [fetchApprovals])
 

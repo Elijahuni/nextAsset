@@ -14,8 +14,10 @@ const DEFAULT_DATA: Record<MasterKey, string[]> = {
   vendors:     ['삼성전자 서비스', 'LG전자 서비스', 'Dell 코리아', '현대자동차'],
 }
 
-// GET /api/master — 5분 캐싱
-export async function GET() {
+// GET /api/master — 인증된 사용자만 조회 가능, 5분 캐싱
+export async function GET(request: NextRequest) {
+  const authError = await requireRoles(request, ['ADMIN', 'MANAGER', 'STAFF'])
+  if (authError) return authError
   try {
     const items = await prisma.masterItem.findMany({ orderBy: { value: 'asc' } })
 
@@ -60,7 +62,7 @@ export async function POST(request: NextRequest) {
     })
 
     // 갱신된 전체 목록 반환
-    return GET()
+    return GET(request)
   } catch (error: unknown) {
     if (error instanceof Error && error.message.includes('Unique constraint')) {
       return badRequest('이미 존재하는 항목입니다.')
@@ -84,7 +86,7 @@ export async function DELETE(request: NextRequest) {
       where: { type: type as MasterKey, value },
     })
 
-    return GET()
+    return GET(request)
   } catch (error) {
     return serverError(error)
   }

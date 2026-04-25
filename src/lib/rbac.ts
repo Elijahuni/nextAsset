@@ -10,6 +10,7 @@
  *   STAFF   → 조회 + 결재 기안만 가능
  */
 
+import '@/lib/env'  // 필수 환경변수 검증 — 서버 시작 시 누락 즉시 에러
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { prisma } from './prisma'

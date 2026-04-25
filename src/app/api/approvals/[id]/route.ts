@@ -134,9 +134,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           },
         })
 
-        // 2. 결재 유형에 따라 자산 상태 일괄 업데이트
+        // 2. 결재 유형에 따라 자산 상태 일괄 업데이트 (소프트 삭제된 자산 제외)
         await tx.asset.updateMany({
-          where: { id: { in: assetIds } },
+          where: { id: { in: assetIds }, deletedAt: null },
           data: { status: effect.assetStatus },
         })
 

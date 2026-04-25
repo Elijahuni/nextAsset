@@ -60,12 +60,28 @@ export async function GET(request: NextRequest) {
       ...(category   && { category }),
     }
 
-    // ── 하위 호환: page 파라미터 없으면 전체 배열 반환 (최대 1000건 캡) ──
+    // ── 보증기간 임박·만료 자산만 빠르게 반환 (Header 알림 전용) ──────────
+    if (searchParams.get('warrantyExpiring') === 'true') {
+      const thirtyDaysLater = new Date()
+      thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30)
+      const expiring = await prisma.asset.findMany({
+        where: {
+          deletedAt:   null,
+          warrantyDate: { not: null, lte: thirtyDaysLater },
+        },
+        select: { id: true, name: true, warrantyDate: true, status: true },
+        orderBy: { warrantyDate: 'asc' },
+        take: 20,
+      })
+      return ok(expiring)
+    }
+
+    // ── 하위 호환: page 파라미터 없으면 전체 배열 반환 (최대 300건 캡) ──
     if (!searchParams.has('page')) {
       const assets = await prisma.asset.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        take: 1000,
+        take: 300,
       })
       return ok(assets)
     }
