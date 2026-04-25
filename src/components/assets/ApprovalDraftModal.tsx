@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { FileSignature, Sparkles, RefreshCcw, CheckCircle } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
 import { Modal } from '@/components/ui'
 import type { ApiAsset } from '@/types'
@@ -107,22 +108,30 @@ export default function ApprovalDraftModal({ selectedAssets, onClose, onSuccess 
 
   // ── 폼 제출 ──────────────────────────────────────────────────────────────────
   const onSubmit = async (data: FormValues) => {
-    const res = await fetch('/api/approvals', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title:       data.title,
-        type:        data.type,
-        applicantId: currentUser.id,
-        assetIds:    selectedAssets.map((a) => a.id),
-        ...(data.reason     && { reason:     data.reason }),
-        ...(data.approverId && { approverId: data.approverId }),
-      }),
-    })
-    const json = await res.json()
-    if (!res.ok) throw new Error(json.error ?? '기안 실패')
-    onSuccess()
-    onClose()
+    try {
+      const res = await fetch('/api/approvals', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title:       data.title,
+          type:        data.type,
+          applicantId: currentUser.id,
+          assetIds:    selectedAssets.map((a) => a.id),
+          ...(data.reason     && { reason:     data.reason }),
+          ...(data.approverId && { approverId: data.approverId }),
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        toast.error(json.error ?? '기안에 실패했습니다.')
+        return
+      }
+      toast.success('결재가 기안되었습니다.')
+      onSuccess()
+      onClose()
+    } catch {
+      toast.error('서버 오류가 발생했습니다.')
+    }
   }
 
   return (

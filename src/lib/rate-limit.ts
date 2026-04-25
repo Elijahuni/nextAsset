@@ -11,42 +11,39 @@
 // ─── Upstash Redis (선택적) ────────────────────────────────────────────────────
 let upstashRatelimit: ((key: string, limit: number, windowMs: number) => Promise<boolean>) | null = null
 
-if (
-  process.env.UPSTASH_REDIS_REST_URL &&
-  process.env.UPSTASH_REDIS_REST_TOKEN
-) {
-  // 런타임에 동적으로 로드 — 환경변수 없는 환경에서 import 에러 방지
-  void (async () => {
-    try {
-      const { Redis }       = await import('@upstash/redis')
-      const { Ratelimit }   = await import('@upstash/ratelimit')
-      const redis           = new Redis({
-        url:   process.env.UPSTASH_REDIS_REST_URL!,
-        token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-      })
-      // 키별 Ratelimit 인스턴스를 캐싱해 재사용
-      const instanceCache = new Map<string, InstanceType<typeof Ratelimit>>()
+// Promise를 저장해 초기화 완료 전 요청도 await 가능하도록 함 (race condition 방지)
+const initPromise: Promise<void> =
+  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+    ? (async () => {
+        try {
+          const { Redis }     = await import('@upstash/redis')
+          const { Ratelimit } = await import('@upstash/ratelimit')
+          const redis         = new Redis({
+            url:   process.env.UPSTASH_REDIS_REST_URL!,
+            token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+          })
+          const instanceCache = new Map<string, InstanceType<typeof Ratelimit>>()
 
-      upstashRatelimit = async (key: string, limit: number, windowMs: number) => {
-        const cacheKey = `${limit}:${windowMs}`
-        if (!instanceCache.has(cacheKey)) {
-          instanceCache.set(
-            cacheKey,
-            new Ratelimit({
-              redis,
-              limiter: Ratelimit.slidingWindow(limit, `${windowMs / 1000} s`),
-              prefix:  '@assetcop:rl',
-            }),
-          )
+          upstashRatelimit = async (key: string, limit: number, windowMs: number) => {
+            const cacheKey = `${limit}:${windowMs}`
+            if (!instanceCache.has(cacheKey)) {
+              instanceCache.set(
+                cacheKey,
+                new Ratelimit({
+                  redis,
+                  limiter: Ratelimit.slidingWindow(limit, `${windowMs / 1000} s`),
+                  prefix:  '@assetcop:rl',
+                }),
+              )
+            }
+            const { success } = await instanceCache.get(cacheKey)!.limit(key)
+            return success
+          }
+        } catch {
+          // Upstash 초기화 실패 → in-memory fallback 유지
         }
-        const { success } = await instanceCache.get(cacheKey)!.limit(key)
-        return success
-      }
-    } catch {
-      // Upstash 초기화 실패 → in-memory fallback 유지
-    }
-  })()
-}
+      })()
+    : Promise.resolve()
 
 // ─── In-memory fallback ────────────────────────────────────────────────────────
 interface Counter {
@@ -93,6 +90,7 @@ export async function checkRateLimit(
   limit    = 10,
   windowMs = 60_000,
 ): Promise<boolean> {
+  await initPromise  // 초기화 완료 전 요청이 in-memory fallback을 타지 않도록 대기
   if (upstashRatelimit) {
     try {
       return await upstashRatelimit(key, limit, windowMs)

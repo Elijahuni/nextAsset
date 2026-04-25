@@ -26,26 +26,21 @@ interface WarningAsset {
 
 interface HeaderProps {
   onMenuToggle: () => void
+  pendingCount: number
 }
 
-export default function Header({ onMenuToggle }: HeaderProps) {
+export default function Header({ onMenuToggle, pendingCount }: HeaderProps) {
   const pathname = usePathname()
   const { currentUser, logout, isEmployee } = useUser()
   const title = (PAGE_TITLES[pathname] ?? (() => '자산관리'))(isEmployee)
 
   const { theme, setTheme } = useTheme()
 
-  const [pendingCount, setPendingCount] = useState(0)
   const [warningAssets, setWarningAssets] = useState<WarningAsset[]>([])
   const [bellOpen, setBellOpen] = useState(false)
   const bellRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    fetch('/api/approvals?status=PENDING')
-      .then((r) => r.json())
-      .then((data: unknown[]) => setPendingCount(Array.isArray(data) ? data.length : 0))
-      .catch(() => {})
-
     // warrantyExpiring=true: DB에서 30일 이내·만료 자산만 최대 20건 반환 — 전체 fetch 불필요
     fetch('/api/assets?warrantyExpiring=true')
       .then((r) => r.json())

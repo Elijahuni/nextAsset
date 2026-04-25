@@ -28,19 +28,32 @@ interface ModalProps {
  * 공통 모달 컴포넌트
  * - backdrop overlay + 카드 구조를 한 곳에서 관리
  * - 다크모드 지원 (dark: 클래스 포함)
+ * - WAI-ARIA dialog 패턴 적용
  */
 export function Modal({ title, onClose, size = 'xl', children, footer }: ModalProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className={`bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full ${SIZE_CLASS[size]} mx-4 flex flex-col max-h-[90vh]`}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      role="presentation"
+    >
+      <div
+        className={`bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full ${SIZE_CLASS[size]} mx-4 flex flex-col max-h-[90vh]`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+      >
 
         {/* 헤더 */}
         <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700 shrink-0">
-          <div className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center min-w-0">
+          <div
+            id="modal-title"
+            className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center min-w-0"
+          >
             {title}
           </div>
           <button
             onClick={onClose}
+            aria-label="모달 닫기"
             className="ml-4 shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
           >
             <X className="w-5 h-5" />

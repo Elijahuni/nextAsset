@@ -66,13 +66,13 @@ export default function DepreciationView() {
   )
 
   return (
-    <div className="h-full flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden print:border-none print:shadow-none">
-      <div className="p-6 border-b border-slate-200 bg-slate-50/50 print:hidden flex items-start justify-between">
+    <div className="h-full flex flex-col bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden print:border-none print:shadow-none">
+      <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 print:hidden flex items-start justify-between">
         <div>
-          <h2 className="text-lg font-bold text-slate-800 flex items-center mb-1">
+          <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center mb-1">
             <Calculator className="w-5 h-5 mr-2 text-emerald-600" /> 감가상각 명세서 (규정 적용)
           </h2>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             * 품목 기준 [상각방법]과 [내용연수]에 따라 월 단위 누계액이 실시간으로 계산됩니다.
           </p>
         </div>
@@ -85,8 +85,8 @@ export default function DepreciationView() {
       </div>
 
       <div className="flex-1 overflow-auto custom-scrollbar print:overflow-visible">
-        <table className="w-full text-sm text-left text-slate-600 whitespace-nowrap print:text-xs">
-          <thead className="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 shadow-sm z-10 print:static print:bg-transparent print:border-b-2 print:border-black">
+        <table className="w-full text-sm text-left text-slate-600 dark:text-slate-300 whitespace-nowrap print:text-xs">
+          <thead className="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-900 sticky top-0 shadow-sm z-10 print:static print:bg-transparent print:border-b-2 print:border-black">
             <tr>
               <th className="px-6 py-4">자산코드 / 명칭</th>
               <th className="px-6 py-4 text-center">품목</th>
@@ -94,7 +94,7 @@ export default function DepreciationView() {
               <th className="px-6 py-4 text-center">취득일 (경과월)</th>
               <th className="px-6 py-4 text-right">취득가액</th>
               <th className="px-6 py-4 text-right text-red-500">당기 상각누계액</th>
-              <th className="px-6 py-4 text-right text-blue-600">장부가액</th>
+              <th className="px-6 py-4 text-right text-blue-600 dark:text-blue-400">장부가액</th>
             </tr>
           </thead>
           <tbody>
@@ -105,14 +105,14 @@ export default function DepreciationView() {
               return (
                 <tr
                   key={asset.id}
-                  className={`border-b border-slate-100 print:border-slate-300 transition-colors ${fullyDepreciated ? 'bg-slate-50/50' : 'bg-white hover:bg-slate-50/50'}`}
+                  className={`border-b border-slate-100 dark:border-slate-700 print:border-slate-300 transition-colors ${fullyDepreciated ? 'bg-slate-50/50 dark:bg-slate-800/50' : 'bg-white dark:bg-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-700/50'}`}
                 >
                   <td className="px-6 py-3">
-                    <p className="font-mono text-xs text-slate-400">{asset.code}</p>
-                    <p className="font-bold text-slate-800">{asset.name}</p>
+                    <p className="font-mono text-xs text-slate-400 dark:text-slate-500">{asset.code}</p>
+                    <p className="font-bold text-slate-800 dark:text-slate-100">{asset.name}</p>
                   </td>
                   <td className="px-6 py-3 text-center">
-                    <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-xs font-medium border border-slate-200">
+                    <span className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2.5 py-1 rounded-md text-xs font-medium border border-slate-200 dark:border-slate-600">
                       {ASSET_CATEGORY_LABEL[asset.category] ?? asset.category}
                     </span>
                   </td>
@@ -143,8 +143,8 @@ export default function DepreciationView() {
           </tbody>
           {/* 합계 행 */}
           {assets.length > 0 && (
-            <tfoot className="bg-slate-50 border-t-2 border-slate-300 sticky bottom-0 print:static">
-              <tr className="font-bold text-slate-800">
+            <tfoot className="bg-slate-50 dark:bg-slate-900 border-t-2 border-slate-300 dark:border-slate-600 sticky bottom-0 print:static">
+              <tr className="font-bold text-slate-800 dark:text-slate-100">
                 <td colSpan={4} className="px-6 py-3 text-sm text-slate-600">합계 ({assets.length}건)</td>
                 <td className="px-6 py-3 text-right">{formatCurrency(totals.price)}</td>
                 <td className="px-6 py-3 text-right text-red-500">- {formatCurrency(totals.accumulated)}</td>

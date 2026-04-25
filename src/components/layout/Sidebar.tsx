@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Database,
@@ -30,23 +29,13 @@ const PATH_MAP: Record<string, string> = {
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  pendingCount: number;
 }
 
-export default function Sidebar({ isOpen, onClose }: SidebarProps) {
+export default function Sidebar({ isOpen, onClose, pendingCount }: SidebarProps) {
   const pathname = usePathname();
   const activeMenu = PATH_MAP[pathname] ?? "dashboard";
   const { currentUser, canManageSystem, isEmployee } = useUser();
-
-  const [pendingCount, setPendingCount] = useState(0);
-
-  useEffect(() => {
-    fetch("/api/approvals?status=PENDING")
-      .then((r) => r.json())
-      .then((data: unknown[]) =>
-        setPendingCount(Array.isArray(data) ? data.length : 0),
-      )
-      .catch(() => {});
-  }, []);
 
   const navLink = (
     href: string,

@@ -106,7 +106,7 @@ export default function ApprovalDetailModal({ approvalId, onClose, onUpdated }: 
       onClose={onClose}
       size="xl"
       footer={
-        <div className="p-6 border-t border-slate-100 flex justify-between items-center">
+        <div className="p-6 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center">
           {/* 취소 버튼 (기안자 본인 + PENDING) */}
           <div>
             {isPending && isApplicant && (
@@ -165,8 +165,8 @@ export default function ApprovalDetailModal({ approvalId, onClose, onUpdated }: 
             {/* 제목 + 상태 */}
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-xl font-bold text-slate-900">{approval.title}</h3>
-                <p className="text-xs text-slate-400 mt-1 font-mono">{approval.createdAt?.split('T')[0]}</p>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{approval.title}</h3>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 font-mono">{approval.createdAt?.split('T')[0]}</p>
               </div>
               <span className={`shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg border ${STATUS_COLOR[approval.status] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                 {STATUS_LABEL[approval.status] ?? approval.status}
@@ -180,9 +180,9 @@ export default function ApprovalDetailModal({ approvalId, onClose, onUpdated }: 
                 { label: '기안자', value: `${approval.applicant?.name} (${approval.applicant?.department})` },
                 { label: '결재자', value: approval.approver ? approval.approver.name : '미지정' },
               ].map(({ label, value }) => (
-                <div key={label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                  <p className="text-xs text-slate-400 font-medium">{label}</p>
-                  <p className="text-sm font-semibold text-slate-800 mt-0.5">{value}</p>
+                <div key={label} className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 border border-slate-100 dark:border-slate-600">
+                  <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">{label}</p>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{value}</p>
                 </div>
               ))}
             </div>
@@ -190,8 +190,8 @@ export default function ApprovalDetailModal({ approvalId, onClose, onUpdated }: 
             {/* 사유 */}
             {approval.reason && (
               <div>
-                <p className="text-xs font-semibold text-slate-500 mb-2">결재 사유</p>
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">결재 사유</p>
+                <div className="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-4 text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
                   {approval.reason}
                 </div>
               </div>
@@ -199,18 +199,18 @@ export default function ApprovalDetailModal({ approvalId, onClose, onUpdated }: 
 
             {/* 연결 자산 */}
             <div>
-              <p className="text-xs font-semibold text-slate-500 mb-2">대상 자산 ({approval.assets.length}건)</p>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">대상 자산 ({approval.assets.length}건)</p>
               {approval.assets.length === 0 ? (
-                <p className="text-sm text-slate-400">연결된 자산이 없습니다.</p>
+                <p className="text-sm text-slate-400 dark:text-slate-500">연결된 자산이 없습니다.</p>
               ) : (
                 <div className="space-y-2">
                   {approval.assets.map(({ asset }) => (
-                    <div key={asset.id} className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-4 py-3">
+                    <div key={asset.id} className="flex items-center justify-between bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-3">
                       <div>
-                        <p className="text-sm font-semibold text-slate-800">{asset.name}</p>
-                        <p className="text-xs text-slate-400 mt-0.5 font-mono">{asset.code} · {ASSET_CATEGORY_LABEL[asset.category] ?? asset.category} · {asset.location}</p>
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{asset.name}</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 font-mono">{asset.code} · {ASSET_CATEGORY_LABEL[asset.category] ?? asset.category} · {asset.location}</p>
                       </div>
-                      <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200">
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-600 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-500">
                         {ASSET_STATUS_LABEL[asset.status] ?? asset.status}
                       </span>
                     </div>

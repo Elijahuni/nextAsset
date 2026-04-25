@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { PlusCircle, RefreshCcw, Wand2 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { ASSET_CATEGORY_LABEL } from '@/lib/utils'
 import { Modal } from '@/components/ui'
 
@@ -62,20 +63,28 @@ export default function AssetCreateModal({ onClose, onSuccess }: Props) {
   })
 
   const onSubmit = async (data: FormValues) => {
-    const res = await fetch('/api/assets', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...data,
-        ...(data.warrantyDate && { warrantyDate: data.warrantyDate }),
-        ...(data.barcode      && { barcode:      data.barcode }),
-        ...(data.remarks      && { remarks:      data.remarks }),
-      }),
-    })
-    const json = await res.json()
-    if (!res.ok) throw new Error(json.error ?? '등록에 실패했습니다.')
-    onSuccess()
-    onClose()
+    try {
+      const res = await fetch('/api/assets', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...data,
+          ...(data.warrantyDate && { warrantyDate: data.warrantyDate }),
+          ...(data.barcode      && { barcode:      data.barcode }),
+          ...(data.remarks      && { remarks:      data.remarks }),
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        toast.error(json.error ?? '등록에 실패했습니다.')
+        return
+      }
+      toast.success('자산이 등록되었습니다.')
+      onSuccess()
+      onClose()
+    } catch {
+      toast.error('서버 오류가 발생했습니다.')
+    }
   }
 
   return (

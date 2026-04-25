@@ -10,6 +10,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const router = useRouter()
   const { isLoggedIn, isLoading } = useUser()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
 
   useEffect(() => {
     if (!isLoading && !isLoggedIn) {
@@ -17,7 +18,14 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     }
   }, [isLoading, isLoggedIn, router])
 
-  // 세션 확인 중이거나 미로그인 상태면 로딩 스피너 표시
+  useEffect(() => {
+    if (!isLoggedIn) return
+    fetch('/api/approvals?status=PENDING')
+      .then((r) => r.json())
+      .then((data: unknown[]) => setPendingCount(Array.isArray(data) ? data.length : 0))
+      .catch(() => {})
+  }, [isLoggedIn])
+
   if (isLoading || !isLoggedIn) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-900">
@@ -28,9 +36,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} pendingCount={pendingCount} />
       <main className="flex-1 flex flex-col min-w-0 bg-slate-50 dark:bg-slate-900 print:bg-white print:m-0 print:p-0">
-        <Header onMenuToggle={() => setSidebarOpen((o) => !o)} />
+        <Header onMenuToggle={() => setSidebarOpen((o) => !o)} pendingCount={pendingCount} />
         <div className="flex-1 overflow-auto p-4 lg:p-8 custom-scrollbar print:p-2 print:overflow-visible">
           {children}
         </div>
