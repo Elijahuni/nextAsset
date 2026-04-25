@@ -81,9 +81,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       <div
         className={`fixed inset-0 bg-black/50 z-40 lg:hidden transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
         onClick={onClose}
+        aria-hidden="true"
       />
 
       <aside
+        aria-label="사이드바 탐색"
         className={`
       fixed lg:static inset-y-0 left-0 z-50 lg:z-auto
       w-64 bg-slate-900 text-slate-300 flex flex-col shadow-2xl flex-shrink-0 print:hidden
@@ -103,7 +105,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           <p className="text-xs font-semibold text-slate-500 uppercase mb-3 tracking-wider">
             {isEmployee ? "나의 자산" : "자산 관리"}
           </p>
-          <nav className="space-y-1">
+          <nav aria-label="주요 메뉴" className="space-y-1">
             {navLink(
               "/",
               "dashboard",
@@ -130,7 +132,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <p className="text-xs font-semibold text-slate-500 uppercase mt-8 mb-3 tracking-wider">
                 현장 및 재무 관리
               </p>
-              <nav className="space-y-1">
+              <nav aria-label="현장 및 재무 관리 메뉴" className="space-y-1">
                 {navLink(
                   "/map",
                   "map",
@@ -159,7 +161,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <p className="text-xs font-semibold text-slate-500 uppercase mt-8 mb-3 tracking-wider">
                 시스템 설정
               </p>
-              <nav className="space-y-1">
+              <nav aria-label="시스템 설정 메뉴" className="space-y-1">
                 {navLink(
                   "/master",
                   "master",

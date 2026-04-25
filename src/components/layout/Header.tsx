@@ -101,6 +101,9 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           <div ref={bellRef} className="relative">
             <button
               onClick={() => setBellOpen((o) => !o)}
+              aria-label={`알림${totalAlerts > 0 ? ` (${totalAlerts}건)` : ''}`}
+              aria-expanded={bellOpen}
+              aria-haspopup="true"
               className="text-slate-400 hover:text-slate-600 relative p-1"
             >
               <Bell className="w-5 h-5" />
@@ -162,8 +165,8 @@ export default function Header({ onMenuToggle }: HeaderProps) {
 
         <button
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          aria-label={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
           className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-          title="다크모드 전환"
         >
           {theme === 'dark'
             ? <Sun className="w-4 h-4" />
@@ -184,7 +187,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           </div>
           <button
             onClick={logout}
-            title="로그아웃"
+            aria-label="로그아웃"
             className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
           >
             <LogOut className="w-4 h-4" />

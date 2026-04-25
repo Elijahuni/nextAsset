@@ -167,6 +167,7 @@ export default function AssetLedger() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
             <input
               type="text"
+              aria-label="자산명 또는 코드 검색"
               className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-sm rounded-lg w-full pl-10 p-2.5 outline-none focus:ring-2 focus:ring-blue-300 transition-all dark:text-slate-200 dark:placeholder-slate-400"
               placeholder="자산명, 코드 검색..."
               value={searchQuery}
@@ -301,6 +302,7 @@ export default function AssetLedger() {
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
+                      aria-label={`${asset.name} 선택`}
                       checked={selectedIds.includes(asset.id)}
                       onChange={() => toggleOne(asset.id)}
                       onClick={(e) => e.stopPropagation()}
@@ -344,6 +346,7 @@ export default function AssetLedger() {
               <th className="px-4 py-4 w-10 print:hidden">
                 <input
                   type="checkbox"
+                  aria-label="현재 페이지 전체 선택"
                   onChange={toggleAll}
                   checked={assets.length > 0 && selectedIds.length === assets.length}
                   className="w-4 h-4 cursor-pointer"
@@ -369,7 +372,7 @@ export default function AssetLedger() {
                 }`}
               >
                 <td className="px-4 py-3 print:hidden" onClick={(e) => e.stopPropagation()}>
-                  <input type="checkbox" checked={selectedIds.includes(asset.id)} onChange={() => toggleOne(asset.id)} className="w-4 h-4 cursor-pointer" />
+                  <input type="checkbox" aria-label={`${asset.name} 선택`} checked={selectedIds.includes(asset.id)} onChange={() => toggleOne(asset.id)} className="w-4 h-4 cursor-pointer" />
                 </td>
                 <td className="px-6 py-3">
                   <Badge
@@ -445,6 +448,7 @@ export default function AssetLedger() {
             <button
               onClick={() => goToPage(page - 1)}
               disabled={page <= 1 || loading}
+              aria-label="이전 페이지"
               className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronLeft className="w-4 h-4 text-slate-600 dark:text-slate-400" />
@@ -455,6 +459,7 @@ export default function AssetLedger() {
             <button
               onClick={() => goToPage(page + 1)}
               disabled={page >= totalPages || loading}
+              aria-label="다음 페이지"
               className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-400" />
