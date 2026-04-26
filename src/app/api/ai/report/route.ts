@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { NextRequest } from 'next/server'
 import { callGemini } from '@/lib/gemini'
 import { badRequest, ok, serverError } from '@/lib/api-response'
