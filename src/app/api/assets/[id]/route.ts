@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { badRequest, notFound, ok, serverError } from '@/lib/api-response'
+import { notFound, ok, serverError } from '@/lib/api-response'
 import { requireRoles } from '@/lib/rbac'
 
 type RouteContext = { params: Promise<{ id: string }> }
