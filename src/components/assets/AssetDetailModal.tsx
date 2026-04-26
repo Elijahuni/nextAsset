@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { RefreshCcw, Wrench, History, Info, ShieldAlert, CheckCircle, Pencil, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
@@ -108,7 +108,7 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
   const [statusLoading, setStatusLoading] = useState(false)
   const [statusMsg, setStatusMsg] = useState('')
 
-  const fetchAsset = () => {
+  const fetchAsset = useCallback(() => {
     setLoading(true)
     fetch(`/api/assets/${assetId}`)
       .then((r) => r.json())
@@ -118,9 +118,9 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
       })
       .catch(() => toast.error('자산 정보를 불러오지 못했습니다.'))
       .finally(() => setLoading(false))
-  }
+  }, [assetId])
 
-  useEffect(() => { fetchAsset() }, [assetId])
+  useEffect(() => { fetchAsset() }, [fetchAsset])
 
   const handleAddMaintenance = async () => {
     if (!mForm.vendor || !mForm.cost || !mForm.detail) {
