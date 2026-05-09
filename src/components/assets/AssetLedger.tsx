@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Search, Upload, Download, FileSignature, PlusCircle,
-  Printer, Filter, ChevronLeft, ChevronRight,
+  Printer, Filter, ChevronLeft, ChevronRight, Image as ImageIcon, QrCode,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
@@ -13,6 +13,7 @@ import BulkUploadModal from './BulkUploadModal'
 import AssetCreateModal from './AssetCreateModal'
 import AssetDetailModal from './AssetDetailModal'
 import ApprovalDraftModal from './ApprovalDraftModal'
+import QrTagModal from './QrTagModal'
 import type { ApiAsset, PaginatedAssets } from '@/types'
 
 const LIMIT = 50
@@ -52,6 +53,7 @@ export default function AssetLedger() {
   const [isCreateOpen, setIsCreateOpen]     = useState(false)
   const [detailAssetId, setDetailAssetId]   = useState<string | null>(null)
   const [isDraftOpen, setIsDraftOpen]       = useState(false)
+  const [isQrOpen,    setIsQrOpen]          = useState(false)
 
   // ── 검색 debounce (400ms) ────────────────────────────────────────────────────
   useEffect(() => {
@@ -167,6 +169,7 @@ export default function AssetLedger() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
             <input
               type="text"
+              aria-label="자산명 또는 코드 검색"
               className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-sm rounded-lg w-full pl-10 p-2.5 outline-none focus:ring-2 focus:ring-blue-300 transition-all dark:text-slate-200 dark:placeholder-slate-400"
               placeholder="자산명, 코드 검색..."
               value={searchQuery}
@@ -204,6 +207,15 @@ export default function AssetLedger() {
               <FileSignature className="w-4 h-4 mr-2 text-slate-500" />
               결재 기안
               {selectedIds.length > 0 && <span className="ml-1 text-blue-600 font-bold">({selectedIds.length})</span>}
+            </button>
+            <button
+              onClick={() => { if (selectedIds.length > 0) setIsQrOpen(true) }}
+              disabled={selectedIds.length === 0}
+              className="flex items-center px-4 py-2.5 text-sm font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              <QrCode className="w-4 h-4 mr-2" />
+              QR 태그
+              {selectedIds.length > 0 && <span className="ml-1 font-bold">({selectedIds.length})</span>}
             </button>
             <button
               onClick={() => window.print()}
@@ -301,6 +313,7 @@ export default function AssetLedger() {
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
+                      aria-label={`${asset.name} 선택`}
                       checked={selectedIds.includes(asset.id)}
                       onChange={() => toggleOne(asset.id)}
                       onClick={(e) => e.stopPropagation()}
@@ -344,16 +357,19 @@ export default function AssetLedger() {
               <th className="px-4 py-4 w-10 print:hidden">
                 <input
                   type="checkbox"
+                  aria-label="현재 페이지 전체 선택"
                   onChange={toggleAll}
                   checked={assets.length > 0 && selectedIds.length === assets.length}
                   className="w-4 h-4 cursor-pointer"
                 />
               </th>
+              <th className="px-3 py-4 w-14 print:hidden">이미지</th>
               <th className="px-6 py-4 font-semibold">상태</th>
               <th className="px-6 py-4 font-semibold">자산관리번호</th>
               <th className="px-6 py-4 font-semibold">분류</th>
               <th className="px-6 py-4 font-semibold">품명</th>
               <th className="px-6 py-4 font-semibold">사업장 / 상세위치</th>
+              <th className="px-6 py-4 font-semibold">담당자</th>
               {!isEmployee && <th className="px-6 py-4 font-semibold text-right">취득가액</th>}
             </tr>
           </thead>
@@ -369,7 +385,22 @@ export default function AssetLedger() {
                 }`}
               >
                 <td className="px-4 py-3 print:hidden" onClick={(e) => e.stopPropagation()}>
-                  <input type="checkbox" checked={selectedIds.includes(asset.id)} onChange={() => toggleOne(asset.id)} className="w-4 h-4 cursor-pointer" />
+                  <input type="checkbox" aria-label={`${asset.name} 선택`} checked={selectedIds.includes(asset.id)} onChange={() => toggleOne(asset.id)} className="w-4 h-4 cursor-pointer" />
+                </td>
+                <td className="px-3 py-3 print:hidden" onClick={(e) => e.stopPropagation()}>
+                  {asset.thumbnail ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={asset.thumbnail}
+                      alt={asset.name}
+                      className="w-10 h-10 object-cover rounded-lg border border-slate-200 dark:border-slate-600"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                      <ImageIcon className="w-4 h-4 text-slate-300 dark:text-slate-500" />
+                    </div>
+                  )}
                 </td>
                 <td className="px-6 py-3">
                   <Badge
@@ -398,6 +429,9 @@ export default function AssetLedger() {
                   <br />
                   <span className="text-slate-400">{asset.location ?? '-'}</span>
                 </td>
+                <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">
+                  {asset.assignedTo ?? <span className="text-slate-300 dark:text-slate-600">-</span>}
+                </td>
                 {!isEmployee && (
                   <td className="px-6 py-3 text-right font-bold text-slate-800 dark:text-slate-100">
                     {formatCurrency(Number(asset.price))}
@@ -407,7 +441,7 @@ export default function AssetLedger() {
             ))}
             {!loading && assets.length === 0 && (
               <EmptyTableRow
-                colSpan={isEmployee ? 6 : 7}
+                colSpan={isEmployee ? 8 : 9}
                 message={
                   total === 0 && !debouncedSearch && activeFilterCount === 0
                     ? '등록된 자산이 없습니다. 자산 등록 또는 엑셀 업로드로 추가해보세요.'
@@ -445,6 +479,7 @@ export default function AssetLedger() {
             <button
               onClick={() => goToPage(page - 1)}
               disabled={page <= 1 || loading}
+              aria-label="이전 페이지"
               className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronLeft className="w-4 h-4 text-slate-600 dark:text-slate-400" />
@@ -455,6 +490,7 @@ export default function AssetLedger() {
             <button
               onClick={() => goToPage(page + 1)}
               disabled={page >= totalPages || loading}
+              aria-label="다음 페이지"
               className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-400" />
@@ -495,6 +531,12 @@ export default function AssetLedger() {
           selectedAssets={selectedAssets}
           onClose={() => setIsDraftOpen(false)}
           onSuccess={() => { setSelectedIds([]); toast.success('결재가 기안되었습니다.') }}
+        />
+      )}
+      {isQrOpen && (
+        <QrTagModal
+          assets={selectedAssets}
+          onClose={() => setIsQrOpen(false)}
         />
       )}
     </div>

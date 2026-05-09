@@ -26,37 +26,27 @@ interface WarningAsset {
 
 interface HeaderProps {
   onMenuToggle: () => void
+  pendingCount: number
 }
 
-export default function Header({ onMenuToggle }: HeaderProps) {
+export default function Header({ onMenuToggle, pendingCount }: HeaderProps) {
   const pathname = usePathname()
   const { currentUser, logout, isEmployee } = useUser()
   const title = (PAGE_TITLES[pathname] ?? (() => '자산관리'))(isEmployee)
 
   const { theme, setTheme } = useTheme()
 
-  const [pendingCount, setPendingCount] = useState(0)
   const [warningAssets, setWarningAssets] = useState<WarningAsset[]>([])
   const [bellOpen, setBellOpen] = useState(false)
   const bellRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    fetch('/api/approvals?status=PENDING')
-      .then((r) => r.json())
-      .then((data: unknown[]) => setPendingCount(Array.isArray(data) ? data.length : 0))
-      .catch(() => {})
-
-    fetch('/api/assets')
+    // warrantyExpiring=true: DB에서 30일 이내·만료 자산만 최대 20건 반환 — 전체 fetch 불필요
+    fetch('/api/assets?warrantyExpiring=true')
       .then((r) => r.json())
       .then((data: WarningAsset[]) => {
         if (!Array.isArray(data)) return
-        // 보증기간 만료됐거나 30일 이내 임박한 자산만
-        const filtered = data.filter((a) => {
-          if (!a.warrantyDate) return false
-          const ws = getWarrantyStatus(a.warrantyDate)
-          return ws.isExpired || ws.text.includes('임박')
-        })
-        setWarningAssets(filtered.slice(0, 10))
+        setWarningAssets(data.slice(0, 10))
       })
       .catch(() => {})
   }, [])
@@ -101,6 +91,9 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           <div ref={bellRef} className="relative">
             <button
               onClick={() => setBellOpen((o) => !o)}
+              aria-label={`알림${totalAlerts > 0 ? ` (${totalAlerts}건)` : ''}`}
+              aria-expanded={bellOpen}
+              aria-haspopup="true"
               className="text-slate-400 hover:text-slate-600 relative p-1"
             >
               <Bell className="w-5 h-5" />
@@ -162,8 +155,8 @@ export default function Header({ onMenuToggle }: HeaderProps) {
 
         <button
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          aria-label={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
           className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-          title="다크모드 전환"
         >
           {theme === 'dark'
             ? <Sun className="w-4 h-4" />
@@ -184,7 +177,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           </div>
           <button
             onClick={logout}
-            title="로그아웃"
+            aria-label="로그아웃"
             className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
           >
             <LogOut className="w-4 h-4" />

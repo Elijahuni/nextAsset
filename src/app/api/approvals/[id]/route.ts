@@ -1,8 +1,10 @@
+export const dynamic = 'force-dynamic'
+
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { badRequest, notFound, ok, serverError } from '@/lib/api-response'
 import type { ApprovalType, AssetStatus, HistoryType } from '@/generated/prisma/enums'
-import { requireRoles } from '@/lib/rbac'
+import { requireRoles, getRequestUser } from '@/lib/rbac'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -19,7 +21,9 @@ const APPROVAL_EFFECT: Record<
 }
 
 // GET /api/approvals/:id
-export async function GET(_request: NextRequest, { params }: RouteContext) {
+export async function GET(request: NextRequest, { params }: RouteContext) {
+  const authError = await requireRoles(request, ['ADMIN', 'MANAGER', 'STAFF'])
+  if (authError) return authError
   try {
     const { id } = await params
 
@@ -50,12 +54,20 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
 
 // PATCH /api/approvals/:id
 // APPROVED·REJECTED → admin·manager만 가능
-// CANCELLED → 모든 인증 사용자 (기안자 본인 여부는 비즈니스 로직으로 처리)
+// CANCELLED → 기안자 본인만 가능
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
+  const sessionUser = await getRequestUser(request)
+  if (!sessionUser) {
+    return new Response(JSON.stringify({ error: '인증이 필요합니다.' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
   try {
     const { id } = await params
     const body = await request.json()
-    const { status, approverId, reason } = body
+    const { status, reason } = body
+    // approverId는 클라이언트가 보내도 무시 — 세션 사용자로 강제 (위/변조 방지)
 
     if (!status) return badRequest('status is required')
 
@@ -66,8 +78,12 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     // 승인·반려는 admin·manager 권한 필요
     if (status === 'APPROVED' || status === 'REJECTED') {
-      const authError = await requireRoles(request, ['ADMIN', 'MANAGER'])
-      if (authError) return authError
+      if (sessionUser.role !== 'ADMIN' && sessionUser.role !== 'MANAGER') {
+        return new Response(JSON.stringify({ error: '권한이 없습니다.' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
     }
 
     // Load current approval to validate state transition
@@ -82,14 +98,23 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     if (existing.status !== 'PENDING') {
       return badRequest(`Approval is already ${existing.status} and cannot be updated`)
     }
-    if (status === 'APPROVED' && !approverId) {
-      return badRequest('approverId is required when approving')
+
+    // CANCELLED는 기안자 본인만 가능
+    if (status === 'CANCELLED' && existing.applicantId !== sessionUser.id) {
+      return new Response(JSON.stringify({ error: '본인이 기안한 결재만 취소할 수 있습니다.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
+
+    // 승인/반려 시 approverId는 세션 사용자로 강제
+    const approverId = (status === 'APPROVED' || status === 'REJECTED') ? sessionUser.id : undefined
 
     // ── Approval 처리 ──────────────────────────────────────────────────────
     if (status === 'APPROVED') {
       const effect = APPROVAL_EFFECT[existing.type]
       const assetIds = existing.assets.map((a) => a.assetId)
+      const approverIdForLog = sessionUser.id  // APPROVED 분기에서는 항상 존재 (type narrowing)
 
       const result = await prisma.$transaction(async (tx) => {
         // 1. 결재 상태 업데이트
@@ -111,19 +136,35 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           },
         })
 
-        // 2. 결재 유형에 따라 자산 상태 일괄 업데이트
+        // 2. 결재 유형에 따라 자산 상태 일괄 업데이트 (소프트 삭제된 자산 제외)
+        // TRANSFER: reason에서 이관 목적지 메타블록 파싱
+        let transferMeta: { dept: string; loc: string } | null = null
+        if (existing.type === 'TRANSFER' && existing.reason) {
+          const metaMatch = existing.reason.match(/__TRANSFER_META__(.+?)__END__/)
+          if (metaMatch) {
+            try { transferMeta = JSON.parse(metaMatch[1]) } catch { /* ignore parse error */ }
+          }
+        }
+
         await tx.asset.updateMany({
-          where: { id: { in: assetIds } },
-          data: { status: effect.assetStatus },
+          where: { id: { in: assetIds }, deletedAt: null },
+          data: {
+            status: effect.assetStatus,
+            ...(transferMeta?.dept && { department: transferMeta.dept }),
+            ...(transferMeta?.loc  && { location:   transferMeta.loc  }),
+          },
         })
 
         // 3. 자산별 HistoryLog 생성
+        const transferDetail = transferMeta
+          ? ` → 부서: ${transferMeta.dept}, 위치: ${transferMeta.loc}`
+          : ''
         await tx.historyLog.createMany({
           data: assetIds.map((assetId) => ({
             assetId,
-            userId: approverId,
+            userId: approverIdForLog,
             type: effect.historyType,
-            detail: `[${effect.detailPrefix}] ${approval.title} (결재 ID: ${id})`,
+            detail: `[${effect.detailPrefix}] ${approval.title} (결재 ID: ${id})${transferDetail}`,
           })),
         })
 

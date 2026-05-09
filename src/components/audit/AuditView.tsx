@@ -65,13 +65,13 @@ export default function AuditView() {
   const rate = assets.length > 0 ? Math.round((scannedCount / assets.length) * 100) : 0
 
   return (
-    <div className="h-full flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
+    <div className="h-full flex flex-col bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+      <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50 dark:bg-slate-800/50">
         <div>
-          <h2 className="text-xl font-black text-slate-800 flex items-center mb-1">
+          <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 flex items-center mb-1">
             <ScanLine className="w-6 h-6 mr-2 text-indigo-600" /> 재물조사 (모바일 실사 연동)
           </h2>
-          <p className="text-sm text-slate-500">가상 바코드 스캐너로 자산 실사를 시뮬레이션합니다.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">가상 바코드 스캐너로 자산 실사를 시뮬레이션합니다.</p>
         </div>
         <div className="flex gap-2">
           {auditStatus === 'ready' && (
@@ -96,28 +96,28 @@ export default function AuditView() {
 
       {/* 요약 */}
       {auditStatus === 'done' && (
-        <div className="px-6 py-4 border-b border-slate-100 flex gap-4">
-          <div className="flex-1 bg-emerald-50 rounded-xl p-4 text-center border border-emerald-100">
-            <p className="text-xs text-emerald-600 font-bold mb-1">정상 확인</p>
-            <p className="text-2xl font-black text-emerald-700">{scannedCount}건</p>
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex gap-4">
+          <div className="flex-1 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl p-4 text-center border border-emerald-100 dark:border-emerald-800">
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-bold mb-1">정상 확인</p>
+            <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300">{scannedCount}건</p>
           </div>
-          <div className="flex-1 bg-red-50 rounded-xl p-4 text-center border border-red-100">
-            <p className="text-xs text-red-600 font-bold mb-1">미스캔 (누락)</p>
-            <p className="text-2xl font-black text-red-600">{missedCount}건</p>
+          <div className="flex-1 bg-red-50 dark:bg-red-900/30 rounded-xl p-4 text-center border border-red-100 dark:border-red-800">
+            <p className="text-xs text-red-600 dark:text-red-400 font-bold mb-1">미스캔 (누락)</p>
+            <p className="text-2xl font-black text-red-600 dark:text-red-300">{missedCount}건</p>
           </div>
-          <div className="flex-1 bg-blue-50 rounded-xl p-4 text-center border border-blue-100">
-            <p className="text-xs text-blue-600 font-bold mb-1">실사율</p>
-            <p className="text-2xl font-black text-blue-700">{rate}%</p>
+          <div className="flex-1 bg-blue-50 dark:bg-blue-900/30 rounded-xl p-4 text-center border border-blue-100 dark:border-blue-800">
+            <p className="text-xs text-blue-600 dark:text-blue-400 font-bold mb-1">실사율</p>
+            <p className="text-2xl font-black text-blue-700 dark:text-blue-300">{rate}%</p>
           </div>
         </div>
       )}
 
-      <div className="flex-1 overflow-auto custom-scrollbar bg-slate-50/30 p-6">
+      <div className="flex-1 overflow-auto custom-scrollbar bg-slate-50/30 dark:bg-slate-900/20 p-6">
         {auditStatus === 'ready' && (
-          <div className="h-full flex flex-col items-center justify-center text-slate-300">
+          <div className="h-full flex flex-col items-center justify-center text-slate-300 dark:text-slate-600">
             <ScanLine className="w-20 h-20 mb-4 opacity-30" />
-            <p className="font-semibold text-slate-400">스캐너를 가동하여 실사를 시작하세요</p>
-            {assets.length === 0 && <p className="text-sm mt-2 text-slate-400">먼저 자산을 등록해주세요.</p>}
+            <p className="font-semibold text-slate-400 dark:text-slate-500">스캐너를 가동하여 실사를 시작하세요</p>
+            {assets.length === 0 && <p className="text-sm mt-2 text-slate-400 dark:text-slate-500">먼저 자산을 등록해주세요.</p>}
           </div>
         )}
         {auditStatus === 'scanning' && (
@@ -127,9 +127,9 @@ export default function AuditView() {
           </div>
         )}
         {auditStatus === 'done' && (
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <table className="w-full text-sm text-left text-slate-600 whitespace-nowrap">
-              <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
+            <table className="w-full text-sm text-left text-slate-600 dark:text-slate-300 whitespace-nowrap">
+              <thead className="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th className="px-6 py-4">실사 결과</th>
                   <th className="px-6 py-4">자산코드</th>
@@ -141,20 +141,20 @@ export default function AuditView() {
                 {assets.map((asset) => {
                   const ok = scannedIds.includes(asset.id)
                   return (
-                    <tr key={asset.id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <tr key={asset.id} className="border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50">
                       <td className="px-6 py-4">
                         {ok ? (
-                          <span className="inline-flex items-center px-2.5 py-1 text-xs font-black rounded-md border bg-blue-100 text-blue-800 border-blue-200">
+                          <span className="inline-flex items-center px-2.5 py-1 text-xs font-black rounded-md border bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-700">
                             <CheckCircle className="w-3.5 h-3.5 mr-1" /> 정상 일치
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2.5 py-1 text-xs font-black rounded-md border bg-red-100 text-red-800 border-red-200">
+                          <span className="inline-flex items-center px-2.5 py-1 text-xs font-black rounded-md border bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300 border-red-200 dark:border-red-700">
                             <AlertCircle className="w-3.5 h-3.5 mr-1" /> 미스캔 (누락)
                           </span>
                         )}
                       </td>
                       <td className="px-6 py-4 font-mono text-xs">{asset.code}</td>
-                      <td className="px-6 py-4 font-bold">{asset.name}</td>
+                      <td className="px-6 py-4 font-bold dark:text-slate-200">{asset.name}</td>
                       <td className="px-6 py-4">{asset.department} / {asset.location}</td>
                     </tr>
                   )

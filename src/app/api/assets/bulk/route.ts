@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { badRequest, created, ok, serverError } from '@/lib/api-response'
@@ -100,48 +102,75 @@ export async function POST(request: NextRequest) {
       rows.map((c) => (c[0] || '').trim()).filter(Boolean)
     )
 
-    // DB에서 소프트 삭제되지 않은 자산 코드 전체 조회
+    // 활성 자산만 조회 (RETIRED/DISPOSED 제외) — 임계값 계산 정확도 + Case C 불필요 UPDATE 방지
     const existing = await prisma.asset.findMany({
-      where:  { deletedAt: null },
+      where:  { deletedAt: null, status: { notIn: ['RETIRED', 'DISPOSED'] } },
       select: { id: true, code: true },
     })
     const existingMap = new Map(existing.map((a) => [a.code, a.id]))
 
-    let inserted    = 0
-    let updated     = 0
-    let deactivated = 0
+    // Case C 대상 사전 계산 — DB 쓰기 전에 임계값 검증
+    const toDeactivate = existing.filter((a) => !excelCodes.has(a.code))
+    const forceMode    = request.nextUrl.searchParams.get('force') === 'true'
+    const threshold    = Math.ceil(existing.length * 0.3)
+    if (toDeactivate.length > threshold && !forceMode) {
+      return new Response(
+        JSON.stringify({
+          error: `비활성화 대상(${toDeactivate.length}건)이 활성 자산(${existing.length}건)의 30%를 초과합니다. 의도한 작업이면 ?force=true 파라미터를 추가하세요.`,
+          toDeactivate: toDeactivate.length,
+          total:        existing.length,
+        }),
+        { status: 409, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
 
-    // Case A + Case B: 엑셀 행 순회
+    // Case A / Case B 분리
+    const insertRows: ReturnType<typeof parseRow>[] = []
+    const updateOps: { id: string; data: ReturnType<typeof parseRow> }[] = []
+
     for (const cols of rows) {
       const parsed     = parseRow(cols)
       const existingId = existingMap.get(parsed.code)
-
       if (!existingId) {
-        // Case A — 신규 Insert
-        await prisma.asset.create({
-          data: { ...parsed, status: 'AVAILABLE' },
-        })
-        inserted++
+        insertRows.push(parsed)
       } else {
-        // Case B — 기존 자산 업데이트 (이미지 제외, 취득가액·취득일은 덮어쓰지 않음)
-        await prisma.asset.update({
-          where: { id: existingId },
-          data: {
-            name:       parsed.name,
-            category:   parsed.category,
-            price:      parsed.price,
-            department: parsed.department,
-            location:   parsed.location,
-            ...(parsed.barcode !== undefined && { barcode: parsed.barcode }),
-            ...(parsed.remarks !== undefined && { remarks: parsed.remarks }),
-          },
-        })
-        updated++
+        updateOps.push({ id: existingId, data: parsed })
       }
     }
 
-    // Case C — 엑셀에 없는 자산 → RETIRED (비활성)
-    const toDeactivate = existing.filter((a) => !excelCodes.has(a.code))
+    // Case A — 신규 Insert (1 쿼리)
+    if (insertRows.length > 0) {
+      await prisma.asset.createMany({
+        data: insertRows.map((r) => ({ ...r, status: 'AVAILABLE' as const })),
+        skipDuplicates: true,
+      })
+    }
+
+    // Case B — 기존 자산 업데이트 (1 DB 왕복, N SQL)
+    if (updateOps.length > 0) {
+      await prisma.$transaction(
+        updateOps.map(({ id, data }) =>
+          prisma.asset.update({
+            where: { id },
+            data: {
+              name:       data.name,
+              category:   data.category,
+              price:      data.price,
+              department: data.department,
+              location:   data.location,
+              ...(data.barcode !== undefined && { barcode: data.barcode }),
+              ...(data.remarks !== undefined && { remarks: data.remarks }),
+            },
+          }),
+        ),
+      )
+    }
+
+    const inserted = insertRows.length
+    const updated  = updateOps.length
+    let   deactivated = 0
+
+    // Case C — 엑셀에 없는 활성 자산 → RETIRED
     if (toDeactivate.length > 0) {
       await prisma.asset.updateMany({
         where: { id: { in: toDeactivate.map((a) => a.id) } },

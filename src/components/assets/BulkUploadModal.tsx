@@ -19,7 +19,9 @@ function parseRows(text: string): string[][] {
     .map((line) => line.split(/[,\t]/).map((c) => c.trim().replace(/^"|"$/g, '')))
 }
 
-const COLUMN_LABELS = ['자산명', '품목', '취득가액', '부서', '위치']
+// 서버 parseRow 열 순서와 반드시 일치해야 함
+// bulk/route.ts: [0]자산관리번호, [1]품명, [2]분류, [3]취득가액, [4]사업장, [5]위치, [6]시리얼, [7]비고
+const COLUMN_LABELS = ['자산관리번호(선택)', '품명*', '분류', '취득가액', '사업장*', '위치', '시리얼번호', '비고']
 
 export default function BulkUploadModal({ onClose, onSuccess }: BulkUploadModalProps) {
   const [uploadText, setUploadText] = useState('')
@@ -98,14 +100,17 @@ export default function BulkUploadModal({ onClose, onSuccess }: BulkUploadModalP
             ))}
           </div>
           <p className="text-[10px] text-slate-400 mt-2">
-            예시: <code className="bg-slate-200 px-1 rounded">LG 그램 15인치	노트북	1500000	IT개발팀	본사 4층</code>
+            예시: <code className="bg-slate-200 px-1 rounded">AST-001	LG 그램 15인치	노트북	1500000	IT개발팀	본사 4층</code>
+          </p>
+          <p className="text-[10px] text-slate-400 mt-1">
+            * 자산관리번호 생략 시 자동 부여 | * 표시 항목 필수
           </p>
         </div>
 
         {/* 텍스트 입력 */}
         <textarea
           className="w-full min-h-[120px] max-h-[200px] p-3 text-sm font-mono border border-slate-300 rounded-xl resize-none outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
-          placeholder={`자산명\t품목\t취득가액\t부서\t위치\nLG 그램\t노트북\t1500000\tIT개발팀\t본사 4층`}
+          placeholder={`자산관리번호\t품명\t분류\t취득가액\t사업장\t위치\t시리얼번호\t비고\nAST-001\tLG 그램\t노트북\t1500000\tIT개발팀\t본사 4층`}
           value={uploadText}
           onChange={(e) => { setUploadText(e.target.value); setError('') }}
         />
@@ -133,7 +138,7 @@ export default function BulkUploadModal({ onClose, onSuccess }: BulkUploadModalP
                   ))}
                   {preview.length > 10 && (
                     <tr>
-                      <td colSpan={5} className="px-3 py-2 text-center text-slate-400">
+                      <td colSpan={COLUMN_LABELS.length} className="px-3 py-2 text-center text-slate-400">
                         ... 외 {preview.length - 10}건
                       </td>
                     </tr>

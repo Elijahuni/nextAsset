@@ -32,19 +32,19 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // getSession()으로 쿠키에서 세션 직접 읽기 (네트워크 호출 없음, 빠름)
-  const { data: { session } } = await supabase.auth.getSession()
+  // getUser()로 Supabase 서버에서 JWT 서명 검증 (getSession은 로컬 쿠키만 읽어 위조 가능)
+  const { data: { user } } = await supabase.auth.getUser()
 
   // API routes: return 401 JSON if unauthenticated
   if (pathname.startsWith('/api/')) {
-    if (!session) {
+    if (!user) {
       return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 })
     }
     return response
   }
 
   // Page routes: redirect to login if unauthenticated
-  if (!session) {
+  if (!user) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('next', pathname)
     return NextResponse.redirect(loginUrl)
@@ -54,7 +54,8 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
+  // 정적 자산, 로그인 페이지, Supabase Auth 콜백은 미들웨어 제외
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!login|api/auth|_next/static|_next/image|favicon\\.ico).*)',
   ],
 }

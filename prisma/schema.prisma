@@ -1,11 +1,13 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider      = "prisma-client"
+  output        = "../src/generated/prisma"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─── Enums ─────────────────────────────────────────────────────────────────
@@ -87,6 +89,11 @@ model Asset {
   acquiredDate DateTime
   warrantyDate DateTime?
   remarks      String?       // 비고 (TW-AMS remarks 호환)
+  subCategory  String?       // 중분류 (예: FR, IT-NB)
+  description  String?       // 세부정보 (예: 믹스 일자 사무용책상 Black leg)
+  size         String?       // 사이즈 WxDxH (예: 1600x800x720)
+  color        String?       // 색상 (예: white, 원목)
+  assignedTo   String?       // 담당자 (성명 또는 부서명, 자유텍스트)
   deletedAt    DateTime?     // 소프트 삭제: null이면 활성, 값이 있으면 삭제됨
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -94,6 +101,7 @@ model Asset {
   approvals       ApprovalAsset[]
   historyLogs     HistoryLog[]
   maintenanceLogs MaintenanceLog[]
+  files           AssetFile[]
 
   @@index([department])
   @@index([status])
@@ -129,12 +137,27 @@ model Approval {
   applicant User            @relation("Applicant", fields: [applicantId], references: [id])
   approver  User?           @relation("Approver", fields: [approverId], references: [id])
   assets    ApprovalAsset[]
+  files     ApprovalFile[]
 
   @@index([applicantId])
   @@index([approverId])
   @@index([status])
   @@index([createdAt])
   @@map("approvals")
+}
+
+model ApprovalFile {
+  id          String   @id @default(cuid())
+  approvalId  String
+  approval    Approval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  name        String   // 원본 파일명
+  storagePath String   // Supabase Storage 경로 (approvals/{approvalId}/{ts}-{name})
+  mimeType    String
+  size        Int      // bytes
+  createdAt   DateTime @default(now())
+
+  @@index([approvalId])
+  @@map("approval_files")
 }
 
 model HistoryLog {
@@ -168,6 +191,20 @@ model MaintenanceLog {
   @@index([assetId])
   @@index([date])
   @@map("maintenance_logs")
+}
+
+model AssetFile {
+  id          String   @id @default(cuid())
+  assetId     String
+  asset       Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  name        String   // 원본 파일명
+  storagePath String   // Supabase Storage 경로 (assets/{assetId}/{ts}-{name})
+  mimeType    String
+  size        Int      // bytes
+  createdAt   DateTime @default(now())
+
+  @@index([assetId])
+  @@map("asset_files")
 }
 
 // 마스터 데이터 (부서 / 위치 / 벤더 / 카테고리명 등)

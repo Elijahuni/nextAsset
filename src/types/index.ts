@@ -18,6 +18,12 @@ export interface ApiAsset {
   warrantyDate?: string | null
   barcode?:     string | null
   remarks?:     string | null   // 비고 (TW-AMS 호환)
+  subCategory?: string | null   // 중분류
+  description?: string | null   // 세부정보
+  size?:        string | null   // 사이즈 WxDxH
+  color?:       string | null   // 색상
+  assignedTo?:  string | null   // 담당자
+  thumbnail?:   string | null   // 목록 API에서만 포함 (첫 번째 이미지 URL)
   deletedAt?:   string | null
   createdAt?:   string
   updatedAt?:   string
