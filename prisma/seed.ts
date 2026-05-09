@@ -15,9 +15,9 @@ const prisma = new PrismaClient()
 
 const USERS = [
   { id: 'admin',    name: '시스템관리자', email: 'admin@assetcop.local',    password: 'Admin1234!',    role: 'ADMIN'   as const, department: '경영지원부' },
-  { id: 'manager1', name: '김팀장',       email: 'manager1@assetcop.local', password: 'Manager1234!',  role: 'MANAGER' as const, department: 'IT개발팀'  },
-  { id: 'emp1',     name: '홍길동',       email: 'emp1@assetcop.local',     password: 'Employee1234!', role: 'STAFF'   as const, department: '경영지원부' },
-  { id: 'emp2',     name: '김철수',       email: 'emp2@assetcop.local',     password: 'Employee1234!', role: 'STAFF'   as const, department: 'IT개발팀'  },
+  { id: 'manager1', name: '조찬형 팀장',       email: 'manager1@assetcop.local', password: 'Manager1234!',  role: 'MANAGER' as const, department: 'IT개발팀'  },
+  { id: 'emp1',     name: '홍길동 님',       email: 'emp1@assetcop.local',     password: 'Employee1234!', role: 'STAFF'   as const, department: '경영지원부' },
+  { id: 'emp2',     name: '이유진 님',       email: 'emp2@assetcop.local',     password: 'Employee1234!', role: 'STAFF'   as const, department: '경영지원부'  },
 ]
 
 async function main() {

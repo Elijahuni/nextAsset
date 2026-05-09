@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { CheckCircle, XCircle, Ban, RefreshCcw, FileText } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { CheckCircle, XCircle, Ban, RefreshCcw, FileText, Paperclip, X, Image, ExternalLink, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
 import { ASSET_STATUS_LABEL, ASSET_CATEGORY_LABEL } from '@/lib/utils'
@@ -31,10 +31,43 @@ interface ApprovalDetail {
   assets: ApprovalAsset[]
 }
 
+interface ApprovalFile {
+  id:          string
+  name:        string
+  storagePath: string
+  mimeType:    string
+  size:        number
+  createdAt:   string
+  url:         string
+}
+
 interface ApprovalDetailModalProps {
   approvalId: string
   onClose: () => void
   onUpdated: () => void
+}
+
+const ALLOWED_MIME = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+])
+const MAX_FILES     = 5
+const MAX_FILE_SIZE = 10 * 1024 * 1024
+
+function formatBytes(n: number) {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+function FileTypeIcon({ mimeType }: { mimeType: string }) {
+  return mimeType.startsWith('image/')
+    ? <Image className="w-4 h-4 text-blue-500 shrink-0" />
+    : <FileText className="w-4 h-4 text-slate-400 shrink-0" />
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -55,19 +88,96 @@ const TYPE_LABEL: Record<string, string> = {
 
 export default function ApprovalDetailModal({ approvalId, onClose, onUpdated }: ApprovalDetailModalProps) {
   const { currentUser, canManageAssets } = useUser()
-  const [approval, setApproval] = useState<ApprovalDetail | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [approval,      setApproval]      = useState<ApprovalDetail | null>(null)
+  const [loading,       setLoading]       = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [error, setError] = useState('')
+  const [error,         setError]         = useState('')
+  const [files,         setFiles]         = useState<ApprovalFile[]>([])
+  const [fileUploading, setFileUploading] = useState(false)
+  const [deletingFileId,setDeletingFileId]= useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setLoading(true)
-    fetch(`/api/approvals/${approvalId}`)
-      .then((r) => r.json())
-      .then((data: ApprovalDetail) => setApproval(data))
+    Promise.all([
+      fetch(`/api/approvals/${approvalId}`).then((r) => r.json()),
+      fetch(`/api/approvals/${approvalId}/files`).then((r) => r.json()),
+    ])
+      .then(([approvalData, filesData]: [ApprovalDetail, unknown]) => {
+        setApproval(approvalData)
+        setFiles(Array.isArray(filesData) ? filesData as ApprovalFile[] : [])
+      })
       .catch(() => toast.error('결재 정보를 불러오지 못했습니다.'))
       .finally(() => setLoading(false))
   }, [approvalId])
+
+  // 파일 추가
+  const handleFileAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (!selected.length) return
+
+    if (files.length + selected.length > MAX_FILES) {
+      toast.error(`첨부파일은 최대 ${MAX_FILES}개까지 등록할 수 있습니다.`)
+      return
+    }
+
+    const file = selected[0]
+    if (!ALLOWED_MIME.has(file.type)) { toast.error('지원하지 않는 파일 형식입니다.'); return }
+    if (file.size > MAX_FILE_SIZE)    { toast.error('파일 크기는 10MB 이하여야 합니다.'); return }
+
+    setFileUploading(true)
+    try {
+      // presign
+      const presignRes = await fetch(`/api/approvals/${approvalId}/files/presign`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, mimeType: file.type, size: file.size }),
+      })
+      const presignData = await presignRes.json()
+      if (!presignRes.ok) { toast.error(presignData.error ?? '업로드 실패'); return }
+
+      // PUT to storage
+      const putRes = await fetch(presignData.signedUrl, {
+        method:  'PUT',
+        headers: { 'Content-Type': file.type, 'x-upsert': 'true' },
+        body:    file,
+      })
+      if (!putRes.ok) { toast.error('스토리지 업로드 실패'); return }
+
+      // confirm
+      const confirmRes = await fetch(`/api/approvals/${approvalId}/files`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: file.name, storagePath: presignData.path, mimeType: file.type, size: file.size }),
+      })
+      const confirmData = await confirmRes.json()
+      if (!confirmRes.ok) { toast.error(confirmData.error ?? '파일 등록 실패'); return }
+
+      setFiles((prev) => [...prev, confirmData.data ?? confirmData])
+      toast.success('파일이 추가되었습니다.')
+    } catch {
+      toast.error('파일 업로드 중 오류가 발생했습니다.')
+    } finally {
+      setFileUploading(false)
+    }
+  }
+
+  // 파일 삭제
+  const handleFileDelete = async (fileId: string, fileName: string) => {
+    if (!confirm(`"${fileName}" 파일을 삭제하시겠습니까?`)) return
+    setDeletingFileId(fileId)
+    try {
+      const res = await fetch(`/api/approvals/${approvalId}/files?fileId=${fileId}`, { method: 'DELETE' })
+      if (!res.ok) { const d = await res.json(); toast.error(d.error ?? '삭제 실패'); return }
+      setFiles((prev) => prev.filter((f) => f.id !== fileId))
+      toast.success('파일이 삭제되었습니다.')
+    } catch {
+      toast.error('파일 삭제 중 오류가 발생했습니다.')
+    } finally {
+      setDeletingFileId(null)
+    }
+  }
 
   const handleAction = async (status: 'APPROVED' | 'REJECTED' | 'CANCELLED') => {
     setActionLoading(status)
@@ -187,15 +297,43 @@ export default function ApprovalDetailModal({ approvalId, onClose, onUpdated }: 
               ))}
             </div>
 
-            {/* 사유 */}
-            {approval.reason && (
-              <div>
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">결재 사유</p>
-                <div className="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-4 text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
-                  {approval.reason}
+            {/* TRANSFER 이관 목적지 (메타블록 파싱) */}
+            {approval.type === 'TRANSFER' && (() => {
+              const metaMatch = approval.reason?.match(/__TRANSFER_META__(.+?)__END__/)
+              if (!metaMatch) return null
+              try {
+                const meta: { dept: string; loc: string } = JSON.parse(metaMatch[1])
+                return (
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4">
+                    <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-2">이관 목적지</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[10px] text-amber-500 dark:text-amber-400 font-medium mb-0.5">이관 대상 부서</p>
+                        <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{meta.dept || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-amber-500 dark:text-amber-400 font-medium mb-0.5">이관 위치</p>
+                        <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{meta.loc || '-'}</p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              } catch { return null }
+            })()}
+
+            {/* 사유 (메타블록 제거 후 순수 텍스트만 표시) */}
+            {approval.reason && (() => {
+              const cleanReason = approval.reason.replace(/__TRANSFER_META__[\s\S]+?__END__\n?/, '').trim()
+              if (!cleanReason) return null
+              return (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">결재 사유</p>
+                  <div className="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-4 text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                    {cleanReason}
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* 연결 자산 */}
             <div>
@@ -216,6 +354,76 @@ export default function ApprovalDetailModal({ approvalId, onClose, onUpdated }: 
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+
+            {/* 첨부파일 */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  첨부파일 ({files.length}/{MAX_FILES})
+                </p>
+                {isPending && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={fileUploading || files.length >= MAX_FILES}
+                      className="flex items-center px-2.5 py-1 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-40 transition-colors dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600"
+                    >
+                      {fileUploading
+                        ? <><RefreshCcw className="w-3 h-3 mr-1 animate-spin" />업로드 중...</>
+                        : <><Paperclip className="w-3 h-3 mr-1" />파일 추가</>
+                      }
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx"
+                      className="hidden"
+                      onChange={handleFileAdd}
+                    />
+                  </>
+                )}
+              </div>
+
+              {files.length === 0 ? (
+                <p className="text-sm text-slate-400 dark:text-slate-500">첨부된 파일이 없습니다.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {files.map((f) => (
+                    <li key={f.id} className="flex items-center gap-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5">
+                      <FileTypeIcon mimeType={f.mimeType} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{f.name}</p>
+                        <p className="text-[10px] text-slate-400">{formatBytes(f.size)}</p>
+                      </div>
+                      <a
+                        href={f.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-500 hover:text-blue-700 transition-colors"
+                        title="열기"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                      {isPending && (
+                        <button
+                          type="button"
+                          onClick={() => handleFileDelete(f.id, f.name)}
+                          disabled={deletingFileId === f.id}
+                          className="text-slate-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                          title="삭제"
+                        >
+                          {deletingFileId === f.id
+                            ? <RefreshCcw className="w-3.5 h-3.5 animate-spin" />
+                            : <Trash2 className="w-3.5 h-3.5" />
+                          }
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
 

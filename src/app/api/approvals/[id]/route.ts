@@ -137,18 +137,34 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         })
 
         // 2. 결재 유형에 따라 자산 상태 일괄 업데이트 (소프트 삭제된 자산 제외)
+        // TRANSFER: reason에서 이관 목적지 메타블록 파싱
+        let transferMeta: { dept: string; loc: string } | null = null
+        if (existing.type === 'TRANSFER' && existing.reason) {
+          const metaMatch = existing.reason.match(/__TRANSFER_META__(.+?)__END__/)
+          if (metaMatch) {
+            try { transferMeta = JSON.parse(metaMatch[1]) } catch { /* ignore parse error */ }
+          }
+        }
+
         await tx.asset.updateMany({
           where: { id: { in: assetIds }, deletedAt: null },
-          data: { status: effect.assetStatus },
+          data: {
+            status: effect.assetStatus,
+            ...(transferMeta?.dept && { department: transferMeta.dept }),
+            ...(transferMeta?.loc  && { location:   transferMeta.loc  }),
+          },
         })
 
         // 3. 자산별 HistoryLog 생성
+        const transferDetail = transferMeta
+          ? ` → 부서: ${transferMeta.dept}, 위치: ${transferMeta.loc}`
+          : ''
         await tx.historyLog.createMany({
           data: assetIds.map((assetId) => ({
             assetId,
             userId: approverIdForLog,
             type: effect.historyType,
-            detail: `[${effect.detailPrefix}] ${approval.title} (결재 ID: ${id})`,
+            detail: `[${effect.detailPrefix}] ${approval.title} (결재 ID: ${id})${transferDetail}`,
           })),
         })
 

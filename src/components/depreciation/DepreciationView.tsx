@@ -5,7 +5,7 @@ import { Calculator, RefreshCcw, Lock, Settings } from 'lucide-react'
 import { useUser } from '@/context/user-context'
 import { calculateDepreciation } from '@/lib/depreciation'
 import { ASSET_CATEGORY_LABEL, formatCurrency } from '@/lib/utils'
-import DepreciationRuleModal, { type DepreciationRules, loadRules } from './DepreciationRuleModal'
+import DepreciationRuleModal, { type DepreciationRules } from './DepreciationRuleModal'
 
 interface ApiAsset {
   id: string
@@ -24,10 +24,15 @@ export default function DepreciationView() {
   const [isRuleOpen, setIsRuleOpen] = useState(false)
 
   useEffect(() => {
-    setCustomRules(loadRules())
-    fetch('/api/assets')
-      .then((r) => r.json())
-      .then((data: ApiAsset[]) => setAssets(Array.isArray(data) ? data : []))
+    // 감가상각 규칙(DB)과 자산 목록을 병렬 로드
+    Promise.all([
+      fetch('/api/settings/depreciation-rules').then((r) => r.ok ? r.json() : null),
+      fetch('/api/assets').then((r) => r.json()),
+    ])
+      .then(([rules, data]) => {
+        if (rules && typeof rules === 'object') setCustomRules(rules as DepreciationRules)
+        setAssets(Array.isArray(data) ? data : [])
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])

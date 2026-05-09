@@ -1,34 +1,37 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCcw, Wrench, History, Info, ShieldAlert, CheckCircle, Pencil, X } from 'lucide-react'
+import { RefreshCcw, Wrench, History, Info, CheckCircle, Pencil, X, ShieldAlert, QrCode, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
 import { ASSET_CATEGORY_LABEL, ASSET_STATUS_LABEL, formatCurrency, getWarrantyStatus, getActiveLabel } from '@/lib/utils'
 import { Modal } from '@/components/ui'
+import AssetFilesTab from './AssetFilesTab'
+import QrTagModal from './QrTagModal'
+import AssetReportCard from './AssetReportCard'
 import type { ApiAsset, ApiHistoryLog, ApiMaintenanceLog } from '@/types'
 
-// 상세 API 응답은 historyLogs/maintenanceLogs를 항상 포함해 반환하므로 required로 좁힘
-type AssetDetail = Omit<ApiAsset, 'historyLogs' | 'maintenanceLogs' | 'warrantyDate' | 'barcode' | 'remarks'> & {
+type AssetDetail = Omit<ApiAsset, 'historyLogs' | 'maintenanceLogs' | 'warrantyDate' | 'barcode' | 'remarks' | 'assignedTo'> & {
   warrantyDate:    string | null
   barcode:         string | null
   remarks:         string | null
+  assignedTo:      string | null
   historyLogs:     (Omit<ApiHistoryLog, 'user'> & { user?: { id: string; name: string } })[]
   maintenanceLogs: ApiMaintenanceLog[]
 }
 
 interface AssetDetailModalProps {
-  assetId: string
-  onClose: () => void
+  assetId:   string
+  onClose:   () => void
   onUpdated: () => void
 }
 
 const STATUS_OPTIONS = [
-  { value: 'AVAILABLE', label: '사용가능' },
-  { value: 'IN_USE', label: '사용중' },
+  { value: 'AVAILABLE',         label: '사용가능' },
+  { value: 'IN_USE',            label: '사용중' },
   { value: 'UNDER_MAINTENANCE', label: '수리중' },
-  { value: 'RETIRED', label: '보관중' },
-  { value: 'DISPOSED', label: '처분' },
+  { value: 'RETIRED',           label: '보관중' },
+  { value: 'DISPOSED',          label: '처분' },
 ]
 
 const HISTORY_TYPE_LABEL: Record<string, string> = {
@@ -38,84 +41,58 @@ const HISTORY_TYPE_LABEL: Record<string, string> = {
 
 const TODAY = new Date().toISOString().split('T')[0]
 
-type Tab = 'info' | 'maintenance' | 'history' | 'status'
+type Tab = 'info' | 'maintenance' | 'history'
 
 export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetDetailModalProps) {
   const { canManageAssets, canManageSystem } = useUser()
-  const [asset, setAsset] = useState<AssetDetail | null>(null)
+  const [asset,   setAsset]   = useState<AssetDetail | null>(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<Tab>('info')
+  const [tab,     setTab]     = useState<Tab>('info')
 
-  // ── 기본정보 편집 모드 (view↔edit 토글) ─────────────────────────────────────
-  const [isEditing, setIsEditing]   = useState(false)
-  const [editForm, setEditForm]     = useState({
-    name: '', department: '', location: '', barcode: '', remarks: '',
-  })
+  // ── 기본정보 편집 ─────────────────────────────────────────────────────────────
+  const [isQrOpen,       setIsQrOpen]       = useState(false)
+  const [isReportOpen,   setIsReportOpen]   = useState(false)
+  const [isEditing,      setIsEditing]      = useState(false)
+  const [editForm,    setEditForm]    = useState({ name: '', department: '', location: '', barcode: '', remarks: '', subCategory: '', description: '', size: '', color: '', assignedTo: '' })
   const [editLoading, setEditLoading] = useState(false)
 
   const startEdit = () => {
     if (!asset) return
-    setEditForm({
-      name:       asset.name,
-      department: asset.department,
-      location:   asset.location,
-      barcode:    asset.barcode ?? '',
-      remarks:    asset.remarks ?? '',
-    })
+    setEditForm({ name: asset.name, department: asset.department, location: asset.location, barcode: asset.barcode ?? '', remarks: asset.remarks ?? '', subCategory: asset.subCategory ?? '', description: asset.description ?? '', size: asset.size ?? '', color: asset.color ?? '', assignedTo: asset.assignedTo ?? '' })
     setIsEditing(true)
   }
-
-  const cancelEdit = () => setIsEditing(false)
 
   const saveEdit = async () => {
     if (!asset) return
     setEditLoading(true)
     try {
       const res = await fetch(`/api/assets/${asset.id}`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          name:       editForm.name       || undefined,
-          department: editForm.department || undefined,
-          location:   editForm.location   || undefined,
-          barcode:    editForm.barcode,
-          remarks:    editForm.remarks,
-        }),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editForm.name || undefined, department: editForm.department || undefined, location: editForm.location || undefined, barcode: editForm.barcode, remarks: editForm.remarks, subCategory: editForm.subCategory, description: editForm.description, size: editForm.size, color: editForm.color, assignedTo: editForm.assignedTo }),
       })
-      if (!res.ok) {
-        const d = await res.json()
-        toast.error(d.error ?? '저장 실패')
-        return
-      }
+      if (!res.ok) { const d = await res.json(); toast.error(d.error ?? '저장 실패'); return }
       toast.success('자산 정보가 업데이트됐습니다.')
       setIsEditing(false)
       fetchAsset()
       onUpdated()
-    } catch {
-      toast.error('서버 오류가 발생했습니다.')
-    } finally {
-      setEditLoading(false)
-    }
+    } catch { toast.error('서버 오류가 발생했습니다.') }
+    finally { setEditLoading(false) }
   }
 
-  // 유지보수 폼
-  const [mForm, setMForm] = useState({ date: TODAY, vendor: '', cost: '', detail: '' })
+  // ── 유지보수 ─────────────────────────────────────────────────────────────────
+  const [mForm,    setMForm]    = useState({ date: TODAY, vendor: '', cost: '', detail: '' })
   const [mLoading, setMLoading] = useState(false)
-  const [mError, setMError] = useState('')
+  const [mError,   setMError]   = useState('')
 
-  // 상태변경 폼
-  const [newStatus, setNewStatus] = useState('')
+  // ── 상태변경 ─────────────────────────────────────────────────────────────────
+  const [newStatus,     setNewStatus]     = useState('')
   const [statusLoading, setStatusLoading] = useState(false)
-  const [statusMsg, setStatusMsg] = useState('')
 
   const fetchAsset = useCallback(() => {
     setLoading(true)
     fetch(`/api/assets/${assetId}`)
       .then((r) => r.json())
-      .then((data: AssetDetail) => {
-        setAsset(data)
-        setNewStatus(data.status)
-      })
+      .then((data: AssetDetail) => { setAsset(data); setNewStatus(data.status) })
       .catch(() => toast.error('자산 정보를 불러오지 못했습니다.'))
       .finally(() => setLoading(false))
   }, [assetId])
@@ -123,83 +100,67 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
   useEffect(() => { fetchAsset() }, [fetchAsset])
 
   const handleAddMaintenance = async () => {
-    if (!mForm.vendor || !mForm.cost || !mForm.detail) {
-      setMError('모든 항목을 입력해주세요.')
-      return
-    }
-    setMLoading(true)
-    setMError('')
+    if (!mForm.vendor || !mForm.cost || !mForm.detail) { setMError('모든 항목을 입력해주세요.'); return }
+    setMLoading(true); setMError('')
     try {
-      const res = await fetch(`/api/assets/${assetId}/maintenance`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...mForm, cost: Number(mForm.cost) }),
-      })
-      if (!res.ok) {
-        const d = await res.json()
-        setMError(d.error ?? '등록 실패')
-        toast.error(d.error ?? '유지보수 등록에 실패했습니다.')
-        return
-      }
+      const res = await fetch(`/api/assets/${assetId}/maintenance`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...mForm, cost: Number(mForm.cost) }) })
+      if (!res.ok) { const d = await res.json(); setMError(d.error ?? '등록 실패'); toast.error(d.error ?? '유지보수 등록에 실패했습니다.'); return }
       toast.success('유지보수 이력이 등록되었습니다.')
       setMForm({ date: TODAY, vendor: '', cost: '', detail: '' })
       fetchAsset()
-    } catch {
-      setMError('서버 오류가 발생했습니다.')
-    } finally {
-      setMLoading(false)
-    }
+    } catch { setMError('서버 오류가 발생했습니다.') }
+    finally { setMLoading(false) }
   }
 
   const handleStatusChange = async () => {
     if (!newStatus || newStatus === asset?.status) return
     setStatusLoading(true)
-    setStatusMsg('')
     try {
-      const res = await fetch(`/api/assets/${assetId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      })
-      if (!res.ok) {
-        const d = await res.json()
-        setStatusMsg(d.error ?? '변경 실패')
-        toast.error(d.error ?? '상태 변경에 실패했습니다.')
-        return
-      }
+      const res = await fetch(`/api/assets/${assetId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) })
+      if (!res.ok) { const d = await res.json(); toast.error(d.error ?? '상태 변경에 실패했습니다.'); return }
       toast.success('자산 상태가 변경되었습니다.')
-      setStatusMsg('상태가 변경되었습니다.')
-      fetchAsset()
-      onUpdated()
-    } catch {
-      setStatusMsg('서버 오류가 발생했습니다.')
-    } finally {
-      setStatusLoading(false)
-    }
+      fetchAsset(); onUpdated()
+    } catch { toast.error('서버 오류가 발생했습니다.') }
+    finally { setStatusLoading(false) }
   }
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; show: boolean }[] = [
-    { key: 'info',        label: '기본정보',  icon: <Info className="w-4 h-4" />,       show: true },
-    { key: 'maintenance', label: '유지보수',  icon: <Wrench className="w-4 h-4" />,     show: canManageAssets },
-    { key: 'history',     label: '이력',      icon: <History className="w-4 h-4" />,    show: true },
-    { key: 'status',      label: '상태변경',  icon: <ShieldAlert className="w-4 h-4" />, show: canManageSystem },
+    { key: 'info',        label: '기본정보', icon: <Info className="w-4 h-4" />,    show: true },
+    { key: 'maintenance', label: '유지보수', icon: <Wrench className="w-4 h-4" />,  show: canManageAssets },
+    { key: 'history',     label: '이력',     icon: <History className="w-4 h-4" />, show: true },
   ]
 
   return (
+  <>
     <Modal
       title={loading ? '불러오는 중...' : (asset?.name ?? '')}
       onClose={onClose}
       size="2xl"
       footer={
-        <div className="px-6 py-4 flex justify-end">
-          <button onClick={onClose}
-            className="px-5 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors">
+        <div className="px-6 py-4 flex items-center justify-between">
+          {asset ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsReportOpen(true)}
+                className="flex items-center px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600"
+              >
+                <FileText className="w-3.5 h-3.5 mr-1.5" /> 관리카드
+              </button>
+              <button
+                onClick={() => setIsQrOpen(true)}
+                className="flex items-center px-3 py-2 text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-700"
+              >
+                <QrCode className="w-3.5 h-3.5 mr-1.5" /> QR 태그
+              </button>
+            </div>
+          ) : <span />}
+          <button onClick={onClose} className="px-5 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors">
             닫기
           </button>
         </div>
       }
     >
-      {/* 자산관리번호 + 활성/비활성 배지 */}
+      {/* 자산관리번호 + 활성 배지 */}
       {asset && (
         <div className="flex items-center gap-2 px-6 pt-3">
           <span className="text-xs font-mono bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-600 select-all">
@@ -216,7 +177,7 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
       )}
 
       {/* 탭 */}
-      <div className="flex border-b border-slate-200 px-6 bg-slate-50/50">
+      <div className="flex border-b border-slate-200 dark:border-slate-700 px-6 bg-slate-50/50 dark:bg-slate-800/30">
         {tabs.filter((t) => t.show).map((t) => (
           <button
             key={t.key}
@@ -224,7 +185,7 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
             className={`flex items-center gap-1.5 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
               tab === t.key
                 ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
           >
             {t.icon}{t.label}
@@ -243,188 +204,226 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
           <p className="text-center text-slate-400 py-16">자산 정보를 불러올 수 없습니다.</p>
         ) : (
           <>
-            {/* 기본정보 탭 */}
+            {/* ── 기본정보 탭 ── */}
             {tab === 'info' && (
-              <div className="space-y-3">
-                {/* 탭 헤더 — 수정 버튼 */}
-                {canManageAssets && (
-                  <div className="flex justify-end">
-                    {isEditing ? (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={cancelEdit}
-                          className="flex items-center px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
-                        >
-                          <X className="w-3.5 h-3.5 mr-1" />취소
-                        </button>
-                        <button
-                          onClick={saveEdit}
-                          disabled={editLoading}
-                          className="flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                        >
-                          {editLoading
-                            ? <RefreshCcw className="w-3.5 h-3.5 mr-1 animate-spin" />
-                            : <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                          }
-                          저장
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={startEdit}
-                        className="flex items-center px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 transition-colors"
-                      >
+              <div className="space-y-4">
+
+                {/* 액션 바: 수정 버튼 (좌) + 상태변경 (우) */}
+                <div className="flex items-center justify-between gap-3">
+
+                  {/* 수정 버튼 */}
+                  <div className="flex gap-2">
+                    {canManageAssets && !isEditing && (
+                      <button onClick={startEdit} className="flex items-center px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 transition-colors">
                         <Pencil className="w-3.5 h-3.5 mr-1" />수정
                       </button>
                     )}
+                    {isEditing && (
+                      <>
+                        <button onClick={() => setIsEditing(false)} className="flex items-center px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors">
+                          <X className="w-3.5 h-3.5 mr-1" />취소
+                        </button>
+                        <button onClick={saveEdit} disabled={editLoading} className="flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                          {editLoading ? <RefreshCcw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5 mr-1" />}저장
+                        </button>
+                      </>
+                    )}
                   </div>
-                )}
 
-                {/* 품명 — 최상단 강조 */}
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-100 dark:border-blue-800">
-                  <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mb-1">품명 (모델명)</p>
-                  {isEditing ? (
-                    <input
-                      value={editForm.name}
-                      onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
-                      className="w-full text-base font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-700 border border-blue-300 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-300"
-                    />
-                  ) : (
-                    <p className="text-base font-bold text-slate-900 dark:text-slate-100">{asset.name}</p>
+                  {/* 상태변경 — admin/manager 전용, view 모드에서만 */}
+                  {canManageSystem && !isEditing && (
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <select
+                        value={newStatus}
+                        onChange={(e) => setNewStatus(e.target.value)}
+                        className="text-xs border border-slate-300 dark:border-slate-600 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-300 bg-white dark:bg-slate-700 dark:text-slate-200"
+                      >
+                        {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                      <button
+                        onClick={handleStatusChange}
+                        disabled={statusLoading || newStatus === asset.status}
+                        className="flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {statusLoading ? <RefreshCcw className="w-3 h-3 animate-spin" /> : '변경'}
+                      </button>
+                    </div>
                   )}
                 </div>
 
-                {/* 2열 그리드 — 조회 모드 */}
-                {!isEditing && (
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { label: '분류코드',   value: ASSET_CATEGORY_LABEL[asset.category] ?? asset.category },
-                      { label: '상태',       value: ASSET_STATUS_LABEL[asset.status] ?? asset.status },
-                      { label: '사업장',     value: asset.department },
-                      { label: '상세위치/층', value: asset.location },
-                      { label: '취득가액',   value: formatCurrency(Number(asset.price)) },
-                      { label: '취득일',     value: asset.acquiredDate?.split('T')[0] ?? '-' },
-                      { label: '시리얼번호', value: asset.barcode ?? '미설정' },
-                    ].map(({ label, value }) => (
-                      <div key={label} className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3.5 border border-slate-100 dark:border-slate-600">
-                        <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-1">{label}</p>
-                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{value}</p>
-                      </div>
-                    ))}
-                    <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3.5 border border-slate-100 dark:border-slate-600">
-                      <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-1">보증기간</p>
-                      {(() => {
-                        const ws = getWarrantyStatus(asset.warrantyDate)
-                        return <span className={`text-xs font-bold px-2 py-0.5 rounded border ${ws.color}`}>{ws.text}</span>
-                      })()}
+                {/* 2컬럼: 좌(자산정보) + 우(첨부파일) */}
+                <div className="flex gap-5 items-start">
+
+                  {/* 좌측 — 자산 정보 */}
+                  <div className="flex-1 min-w-0 space-y-3">
+
+                    {/* 품명 */}
+                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-100 dark:border-blue-800">
+                      <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mb-1">품명 (모델명)</p>
+                      {isEditing ? (
+                        <input
+                          value={editForm.name}
+                          onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
+                          className="w-full text-base font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-700 border border-blue-300 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-300"
+                        />
+                      ) : (
+                        <p className="text-base font-bold text-slate-900 dark:text-slate-100">{asset.name}</p>
+                      )}
                     </div>
-                    {asset.remarks && (
-                      <div className="col-span-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3.5 border border-amber-100 dark:border-amber-800">
-                        <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mb-1">비고</p>
-                        <p className="text-sm text-slate-700 dark:text-slate-200">{asset.remarks}</p>
+
+                    {/* 조회 모드 */}
+                    {!isEditing && (
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {[
+                          { label: '분류코드',    value: ASSET_CATEGORY_LABEL[asset.category] ?? asset.category },
+                          { label: '상태',        value: ASSET_STATUS_LABEL[asset.status] ?? asset.status },
+                          { label: '사업장',      value: asset.department },
+                          { label: '상세위치/층', value: asset.location },
+                          { label: '취득가액',    value: formatCurrency(Number(asset.price)) },
+                          { label: '취득일',      value: asset.acquiredDate?.split('T')[0] ?? '-' },
+                          { label: '담당자',      value: asset.assignedTo ?? '-' },
+                          { label: '시리얼번호',  value: asset.barcode ?? '-' },
+                          { label: '중분류',      value: asset.subCategory ?? '-' },
+                          { label: '사이즈',      value: asset.size ?? '-' },
+                          { label: '색상',        value: asset.color ?? '-' },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 border border-slate-100 dark:border-slate-600">
+                            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-0.5">{label}</p>
+                            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{value}</p>
+                          </div>
+                        ))}
+                        <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 border border-slate-100 dark:border-slate-600">
+                          <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-0.5">보증기간</p>
+                          {(() => { const ws = getWarrantyStatus(asset.warrantyDate); return <span className={`text-xs font-bold px-2 py-0.5 rounded border ${ws.color}`}>{ws.text}</span> })()}
+                        </div>
+                        {asset.description && (
+                          <div className="col-span-2 bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 border border-slate-100 dark:border-slate-600">
+                            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-0.5">세부정보</p>
+                            <p className="text-sm text-slate-700 dark:text-slate-200">{asset.description}</p>
+                          </div>
+                        )}
+                        {asset.remarks && (
+                          <div className="col-span-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 border border-amber-100 dark:border-amber-800">
+                            <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mb-0.5">비고</p>
+                            <p className="text-sm text-slate-700 dark:text-slate-200">{asset.remarks}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 수정 모드 */}
+                    {isEditing && (
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {([
+                          { label: '사업장',      key: 'department'  as const, placeholder: '본사 / 3공장 / 수원연구소' },
+                          { label: '상세위치/층', key: 'location'    as const, placeholder: '3층 / A동 창고' },
+                          { label: '담당자',      key: 'assignedTo'  as const, placeholder: '홍길동 / 총무팀' },
+                          { label: '시리얼번호',  key: 'barcode'     as const, placeholder: '제품 시리얼번호' },
+                          { label: '중분류',      key: 'subCategory' as const, placeholder: 'FR / IT-NB / CHAIR' },
+                          { label: '사이즈',      key: 'size'        as const, placeholder: '1600x800x720' },
+                          { label: '색상',        key: 'color'       as const, placeholder: 'white / 원목 / 블랙' },
+                        ]).map(({ label, key, placeholder }) => (
+                          <div key={key} className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 border border-slate-200 dark:border-slate-600">
+                            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-0.5">{label}</p>
+                            <input
+                              value={editForm[key]}
+                              onChange={(e) => setEditForm((p) => ({ ...p, [key]: e.target.value }))}
+                              placeholder={placeholder}
+                              className="w-full text-sm font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-600 border border-slate-300 dark:border-slate-500 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-blue-300"
+                            />
+                          </div>
+                        ))}
+                        <div className="col-span-2 bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 border border-slate-200 dark:border-slate-600">
+                          <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-0.5">세부정보</p>
+                          <input
+                            value={editForm.description}
+                            onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
+                            placeholder="믹스 일자 사무용책상 (Black leg)"
+                            className="w-full text-sm font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-600 border border-slate-300 dark:border-slate-500 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-blue-300"
+                          />
+                        </div>
+                        <div className="col-span-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 border border-amber-200 dark:border-amber-800">
+                          <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mb-0.5">비고</p>
+                          <textarea
+                            value={editForm.remarks}
+                            onChange={(e) => setEditForm((p) => ({ ...p, remarks: e.target.value }))}
+                            placeholder="특이사항, 메모 등"
+                            rows={2}
+                            className="w-full text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-600 border border-amber-300 dark:border-amber-700 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-amber-300 resize-none"
+                          />
+                        </div>
+                        {[
+                          { label: '분류코드', value: ASSET_CATEGORY_LABEL[asset.category] ?? asset.category },
+                          { label: '상태',     value: ASSET_STATUS_LABEL[asset.status] ?? asset.status },
+                          { label: '취득가액', value: formatCurrency(Number(asset.price)) },
+                          { label: '취득일',   value: asset.acquiredDate?.split('T')[0] ?? '-' },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="bg-slate-100 dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700 opacity-60">
+                            <p className="text-xs text-slate-400 font-medium mb-0.5">{label} <span className="text-[10px]">(읽기전용)</span></p>
+                            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">{value}</p>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
-                )}
 
-                {/* 수정 모드 — 편집 가능 필드 */}
-                {isEditing && (
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { label: '사업장',     key: 'department' as const, placeholder: '본사 / 3공장 / 수원연구소' },
-                      { label: '상세위치/층', key: 'location'   as const, placeholder: '3층 / A동 창고' },
-                      { label: '시리얼번호', key: 'barcode'    as const, placeholder: '제품 시리얼번호' },
-                    ].map(({ label, key, placeholder }) => (
-                      <div key={key} className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3.5 border border-slate-200 dark:border-slate-600">
-                        <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-1">{label}</p>
-                        <input
-                          value={editForm[key]}
-                          onChange={(e) => setEditForm((p) => ({ ...p, [key]: e.target.value }))}
-                          placeholder={placeholder}
-                          className="w-full text-sm font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-600 border border-slate-300 dark:border-slate-500 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-blue-300"
-                        />
-                      </div>
-                    ))}
-                    {/* 비고 — full width */}
-                    <div className="col-span-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3.5 border border-amber-200 dark:border-amber-800">
-                      <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mb-1">비고</p>
-                      <textarea
-                        value={editForm.remarks}
-                        onChange={(e) => setEditForm((p) => ({ ...p, remarks: e.target.value }))}
-                        placeholder="특이사항, 메모 등"
-                        rows={2}
-                        className="w-full text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-600 border border-amber-300 dark:border-amber-700 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-amber-300 resize-none"
-                      />
+                  {/* 우측 — 첨부파일 */}
+                  <div className="w-52 shrink-0">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">첨부파일</p>
+                    <div className="max-h-80 overflow-y-auto pr-0.5 custom-scrollbar">
+                      <AssetFilesTab assetId={asset.id} />
                     </div>
-                    {/* 읽기전용 필드 표시 */}
-                    {[
-                      { label: '분류코드', value: ASSET_CATEGORY_LABEL[asset.category] ?? asset.category },
-                      { label: '상태',     value: ASSET_STATUS_LABEL[asset.status] ?? asset.status },
-                      { label: '취득가액', value: formatCurrency(Number(asset.price)) },
-                      { label: '취득일',   value: asset.acquiredDate?.split('T')[0] ?? '-' },
-                    ].map(({ label, value }) => (
-                      <div key={label} className="bg-slate-100 dark:bg-slate-800 rounded-xl p-3.5 border border-slate-200 dark:border-slate-700 opacity-60">
-                        <p className="text-xs text-slate-400 font-medium mb-1">{label} <span className="text-[10px]">(읽기전용)</span></p>
-                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">{value}</p>
-                      </div>
-                    ))}
                   </div>
-                )}
+                </div>
+
               </div>
             )}
 
-            {/* 유지보수 탭 */}
+            {/* ── 유지보수 탭 ── */}
             {tab === 'maintenance' && canManageAssets && (
               <div className="space-y-5">
-                {/* 추가 폼 */}
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
-                  <p className="text-sm font-bold text-slate-700">유지보수 이력 추가</p>
+                <div className="bg-slate-50 dark:bg-slate-700/30 rounded-xl p-4 border border-slate-200 dark:border-slate-600 space-y-3">
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">유지보수 이력 추가</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 mb-1">날짜</label>
-                      <input type="date" value={mForm.date}
-                        onChange={(e) => setMForm((p) => ({ ...p, date: e.target.value }))}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
+                      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">날짜</label>
+                      <input type="date" value={mForm.date} onChange={(e) => setMForm((p) => ({ ...p, date: e.target.value }))}
+                        className="w-full border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 mb-1">업체명</label>
-                      <input type="text" value={mForm.vendor} placeholder="삼성서비스센터"
-                        onChange={(e) => setMForm((p) => ({ ...p, vendor: e.target.value }))}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
+                      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">업체명</label>
+                      <input type="text" value={mForm.vendor} placeholder="삼성서비스센터" onChange={(e) => setMForm((p) => ({ ...p, vendor: e.target.value }))}
+                        className="w-full border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 mb-1">비용 (원)</label>
-                      <input type="number" value={mForm.cost} placeholder="150000"
-                        onChange={(e) => setMForm((p) => ({ ...p, cost: e.target.value }))}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
+                      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">비용 (원)</label>
+                      <input type="number" value={mForm.cost} placeholder="150000" onChange={(e) => setMForm((p) => ({ ...p, cost: e.target.value }))}
+                        className="w-full border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 mb-1">내용</label>
-                      <input type="text" value={mForm.detail} placeholder="배터리 교체"
-                        onChange={(e) => setMForm((p) => ({ ...p, detail: e.target.value }))}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
+                      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">내용</label>
+                      <input type="text" value={mForm.detail} placeholder="배터리 교체" onChange={(e) => setMForm((p) => ({ ...p, detail: e.target.value }))}
+                        className="w-full border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300" />
                     </div>
                   </div>
                   {mError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{mError}</p>}
                   <button onClick={handleAddMaintenance} disabled={mLoading}
                     className="flex items-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                    {mLoading ? <RefreshCcw className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-                    추가
+                    {mLoading ? <RefreshCcw className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}추가
                   </button>
                 </div>
-
-                {/* 목록 */}
                 {asset.maintenanceLogs.length === 0 ? (
                   <p className="text-center text-slate-400 py-8">유지보수 이력이 없습니다.</p>
                 ) : (
                   <div className="space-y-2">
                     {asset.maintenanceLogs.map((log) => (
-                      <div key={log.id} className="flex items-start justify-between bg-white border border-slate-200 rounded-xl p-4">
+                      <div key={log.id} className="flex items-start justify-between bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl p-4">
                         <div>
-                          <p className="text-sm font-semibold text-slate-800">{log.detail}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">{log.date?.split('T')[0]} · {log.vendor}</p>
+                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{log.detail}</p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{log.date?.split('T')[0]} · {log.vendor}</p>
                         </div>
-                        <span className="text-sm font-bold text-slate-700">{formatCurrency(Number(log.cost))}</span>
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{formatCurrency(Number(log.cost))}</span>
                       </div>
                     ))}
                   </div>
@@ -432,26 +431,26 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
               </div>
             )}
 
-            {/* 이력 탭 */}
+            {/* ── 이력 탭 ── */}
             {tab === 'history' && (
               <div>
                 {asset.historyLogs.length === 0 ? (
                   <p className="text-center text-slate-400 py-16">이력이 없습니다.</p>
                 ) : (
                   <div className="relative pl-5 space-y-0">
-                    <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-slate-200" />
+                    <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-slate-200 dark:bg-slate-600" />
                     {asset.historyLogs.map((log) => (
                       <div key={log.id} className="relative pb-5">
-                        <div className="absolute -left-3 top-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white shadow" />
-                        <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 ml-3">
+                        <div className="absolute -left-3 top-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white dark:border-slate-800 shadow" />
+                        <div className="bg-slate-50 dark:bg-slate-700/50 border border-slate-100 dark:border-slate-600 rounded-xl p-3 ml-3">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                            <span className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-0.5 rounded-md border border-blue-100 dark:border-blue-700">
                               {HISTORY_TYPE_LABEL[log.type] ?? log.type}
                             </span>
                             <span className="text-xs text-slate-400 font-mono">{log.date?.split('T')[0]}</span>
                           </div>
-                          <p className="text-sm text-slate-700">{log.detail}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">처리자: {log.user?.name ?? '-'}</p>
+                          <p className="text-sm text-slate-700 dark:text-slate-200">{log.detail}</p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">처리자: {log.user?.name ?? '-'}</p>
                         </div>
                       </div>
                     ))}
@@ -459,41 +458,58 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
                 )}
               </div>
             )}
-
-            {/* 상태변경 탭 (admin only) */}
-            {tab === 'status' && canManageSystem && (
-              <div className="space-y-4">
-                <p className="text-sm text-slate-500">현재 상태: <span className="font-bold text-slate-800">{ASSET_STATUS_LABEL[asset.status] ?? asset.status}</span></p>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-2">새 상태 선택</label>
-                  <select
-                    value={newStatus}
-                    onChange={(e) => setNewStatus(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-300 bg-white"
-                  >
-                    {STATUS_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </div>
-                {statusMsg && (
-                  <p className={`text-sm px-3 py-2 rounded-lg border ${statusMsg.includes('변경') ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-600 bg-red-50 border-red-200'}`}>
-                    {statusMsg}
-                  </p>
-                )}
-                <button
-                  onClick={handleStatusChange}
-                  disabled={statusLoading || newStatus === asset.status}
-                  className="flex items-center px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {statusLoading ? <RefreshCcw className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-                  상태 변경
-                </button>
-              </div>
-            )}
           </>
         )}
       </div>
     </Modal>
+
+    {isQrOpen && asset && (
+      <QrTagModal
+        assets={[{
+          id:         asset.id,
+          code:       asset.code,
+          name:       asset.name,
+          category:   asset.category,
+          department: asset.department,
+          location:   asset.location,
+          status:     asset.status,
+          price:      asset.price,
+          acquiredDate: asset.acquiredDate ?? '',
+        } as ApiAsset]}
+        onClose={() => setIsQrOpen(false)}
+      />
+    )}
+    {isReportOpen && asset && (
+      <AssetReportCard
+        asset={{
+          id:             asset.id,
+          code:           asset.code,
+          name:           asset.name,
+          category:       asset.category,
+          department:     asset.department,
+          location:       asset.location,
+          status:         asset.status,
+          price:          asset.price,
+          acquiredDate:   asset.acquiredDate ?? null,
+          warrantyDate:   asset.warrantyDate ?? null,
+          barcode:        asset.barcode ?? null,
+          remarks:        asset.remarks ?? null,
+          subCategory:    asset.subCategory ?? null,
+          description:    asset.description ?? null,
+          size:           asset.size ?? null,
+          color:          asset.color ?? null,
+          assignedTo:     asset.assignedTo ?? null,
+          maintenanceLogs: asset.maintenanceLogs.map((l) => ({
+            id:     l.id,
+            date:   l.date,
+            vendor: l.vendor,
+            cost:   l.cost,
+            detail: l.detail,
+          })),
+        }}
+        onClose={() => setIsReportOpen(false)}
+      />
+    )}
+  </>
   )
 }

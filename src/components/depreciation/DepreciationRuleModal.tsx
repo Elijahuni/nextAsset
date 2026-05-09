@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Save, RotateCcw } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { DEFAULT_DEPRECIATION_RULES } from '@/lib/depreciation'
 import { ASSET_CATEGORY_LABEL } from '@/lib/utils'
 import { Modal } from '@/components/ui'
@@ -12,20 +13,6 @@ interface DepreciationRuleModalProps {
   rules: DepreciationRules
   onSave: (rules: DepreciationRules) => void
   onClose: () => void
-}
-
-const STORAGE_KEY = 'depreciation_custom_rules'
-
-export function loadRules(): DepreciationRules {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) return JSON.parse(saved) as DepreciationRules
-  } catch { /* ignore */ }
-  return { ...DEFAULT_DEPRECIATION_RULES }
-}
-
-export function saveRules(rules: DepreciationRules) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(rules))
 }
 
 export default function DepreciationRuleModal({ rules, onSave, onClose }: DepreciationRuleModalProps) {
@@ -45,10 +32,28 @@ export default function DepreciationRuleModal({ rules, onSave, onClose }: Deprec
     setDraft(Object.fromEntries(Object.entries(DEFAULT_DEPRECIATION_RULES).map(([k, v]) => [k, { ...v }])))
   }
 
-  const handleSave = () => {
-    saveRules(draft)
-    onSave(draft)
-    onClose()
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/settings/depreciation-rules', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(draft),
+      })
+      if (!res.ok) {
+        toast.error('저장에 실패했습니다.')
+        return
+      }
+      toast.success('감가상각 규칙이 저장되었습니다.')
+      onSave(draft)
+      onClose()
+    } catch {
+      toast.error('서버 오류가 발생했습니다.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -69,16 +74,16 @@ export default function DepreciationRuleModal({ rules, onSave, onClose }: Deprec
               className="px-5 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors">
               취소
             </button>
-            <button onClick={handleSave}
-              className="flex items-center px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors">
-              <Save className="w-4 h-4 mr-2" /> 저장
+            <button onClick={handleSave} disabled={saving}
+              className="flex items-center px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+              <Save className="w-4 h-4 mr-2" /> {saving ? '저장 중...' : '저장'}
             </button>
           </div>
         </div>
       }
     >
       <div className="p-6 space-y-3">
-        <p className="text-xs text-slate-400 mb-4">품목별 상각방법과 내용연수를 설정합니다. 변경사항은 브라우저에 저장됩니다.</p>
+        <p className="text-xs text-slate-400 mb-4">품목별 상각방법과 내용연수를 설정합니다. 변경사항은 DB에 저장되어 모든 사용자에게 적용됩니다.</p>
 
         {Object.keys(DEFAULT_DEPRECIATION_RULES).map((category) => (
           <div key={category} className="flex items-center gap-4 bg-slate-50 rounded-xl p-4 border border-slate-100">

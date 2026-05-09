@@ -20,6 +20,11 @@ const schema = z.object({
   warrantyDate: z.string().optional(),
   barcode:      z.string().optional(),
   remarks:      z.string().optional(),
+  subCategory:  z.string().max(100).optional(),
+  description:  z.string().max(500).optional(),
+  size:         z.string().max(50).optional(),
+  color:        z.string().max(50).optional(),
+  assignedTo:   z.string().max(100).optional(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -59,6 +64,11 @@ export default function AssetCreateModal({ onClose, onSuccess }: Props) {
       warrantyDate: '',
       barcode:      '',
       remarks:      '',
+      subCategory:  '',
+      description:  '',
+      size:         '',
+      color:        '',
+      assignedTo:   '',
     },
   })
 
@@ -67,12 +77,7 @@ export default function AssetCreateModal({ onClose, onSuccess }: Props) {
       const res = await fetch('/api/assets', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...data,
-          ...(data.warrantyDate && { warrantyDate: data.warrantyDate }),
-          ...(data.barcode      && { barcode:      data.barcode }),
-          ...(data.remarks      && { remarks:      data.remarks }),
-        }),
+        body: JSON.stringify(data),
       })
       const json = await res.json()
       if (!res.ok) {
@@ -152,19 +157,67 @@ export default function AssetCreateModal({ onClose, onSuccess }: Props) {
           {errors.name && <p className={ERR_CLS}>{errors.name.message}</p>}
         </div>
 
-        {/* 분류 */}
+        {/* 분류 / 중분류 */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+              분류코드 <span className="text-red-500">*</span>
+            </label>
+            <select
+              {...register('category')}
+              className={`${INPUT_CLS} border-slate-300 bg-white dark:bg-slate-700`}
+            >
+              {Object.entries(ASSET_CATEGORY_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+              중분류 (선택)
+            </label>
+            <input
+              {...register('subCategory')}
+              placeholder="FR / IT-NB / CHAIR"
+              className={`${INPUT_CLS} border-slate-300`}
+            />
+          </div>
+        </div>
+
+        {/* 세부정보 */}
         <div>
           <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-            분류코드 <span className="text-red-500">*</span>
+            세부정보 (선택)
           </label>
-          <select
-            {...register('category')}
-            className={`${INPUT_CLS} border-slate-300 bg-white dark:bg-slate-700`}
-          >
-            {Object.entries(ASSET_CATEGORY_LABEL).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
+          <input
+            {...register('description')}
+            placeholder="예: 믹스 일자 사무용책상 (Black leg)"
+            className={`${INPUT_CLS} border-slate-300`}
+          />
+        </div>
+
+        {/* 사이즈 / 색상 */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+              사이즈 (선택)
+            </label>
+            <input
+              {...register('size')}
+              placeholder="1600x800x720"
+              className={`${INPUT_CLS} border-slate-300`}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+              색상 (선택)
+            </label>
+            <input
+              {...register('color')}
+              placeholder="white / 원목 / 블랙"
+              className={`${INPUT_CLS} border-slate-300`}
+            />
+          </div>
         </div>
 
         {/* 취득가액 */}
@@ -233,16 +286,28 @@ export default function AssetCreateModal({ onClose, onSuccess }: Props) {
           </div>
         </div>
 
-        {/* 시리얼번호 */}
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-            시리얼번호 (선택)
-          </label>
-          <input
-            {...register('barcode')}
-            placeholder="제품 시리얼번호"
-            className={`${INPUT_CLS} border-slate-300`}
-          />
+        {/* 담당자 / 시리얼번호 */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+              담당자 (선택)
+            </label>
+            <input
+              {...register('assignedTo')}
+              placeholder="홍길동 / 총무팀"
+              className={`${INPUT_CLS} border-slate-300`}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+              시리얼번호 (선택)
+            </label>
+            <input
+              {...register('barcode')}
+              placeholder="제품 시리얼번호"
+              className={`${INPUT_CLS} border-slate-300`}
+            />
+          </div>
         </div>
 
         {/* 비고 */}

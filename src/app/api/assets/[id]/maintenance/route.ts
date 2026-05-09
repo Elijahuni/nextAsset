@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { badRequest, created, notFound, ok, serverError } from '@/lib/api-response'
-import { requireRoles } from '@/lib/rbac'
+import { requireRoles, getRequestUser } from '@/lib/rbac'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -36,8 +36,10 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
 // POST /api/assets/:id/maintenance — admin·manager만 등록 가능
 export async function POST(request: NextRequest, { params }: RouteContext) {
-  const authError = await requireRoles(request, ['ADMIN', 'MANAGER'])
-  if (authError) return authError
+  const sessionUser = await getRequestUser(request)
+  if (!sessionUser) return new Response(JSON.stringify({ error: '인증이 필요합니다.' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+  if (!['ADMIN', 'MANAGER'].includes(sessionUser.role)) return new Response(JSON.stringify({ error: '권한이 없습니다.' }), { status: 403, headers: { 'Content-Type': 'application/json' } })
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -57,6 +59,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         vendor,
         cost,
         detail,
+      },
+    })
+
+    // 유지보수 HistoryLog
+    await prisma.historyLog.create({
+      data: {
+        assetId: id,
+        userId:  sessionUser.id,
+        type:    'MAINTAINED',
+        detail:  `[유지보수 등록] ${detail} (업체: ${vendor}, 비용: ${Number(cost).toLocaleString()}원)`,
       },
     })
 
