@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircle, XCircle, Ban, RefreshCcw, FileText, Paperclip, X, Image, ExternalLink, Trash2 } from 'lucide-react'
+import { CheckCircle, XCircle, Ban, RefreshCcw, FileText, Paperclip, Image as ImageIcon, ExternalLink, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
 import { ASSET_STATUS_LABEL, ASSET_CATEGORY_LABEL } from '@/lib/utils'
@@ -66,7 +66,7 @@ function formatBytes(n: number) {
 
 function FileTypeIcon({ mimeType }: { mimeType: string }) {
   return mimeType.startsWith('image/')
-    ? <Image className="w-4 h-4 text-blue-500 shrink-0" />
+    ? <ImageIcon className="w-4 h-4 text-blue-500 shrink-0" />
     : <FileText className="w-4 h-4 text-slate-400 shrink-0" />
 }
 
