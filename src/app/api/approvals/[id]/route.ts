@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { badRequest, notFound, ok, serverError } from '@/lib/api-response'
-import type { ApprovalType, AssetStatus, HistoryType } from '@/generated/prisma/enums'
+import type { ApprovalType, AssetStatus, HistoryType } from '@prisma/client'
 import { requireRoles, getRequestUser } from '@/lib/rbac'
 
 type RouteContext = { params: Promise<{ id: string }> }

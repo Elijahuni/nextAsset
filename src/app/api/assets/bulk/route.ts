@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { badRequest, created, ok, serverError } from '@/lib/api-response'
-import type { AssetCategory } from '@/generated/prisma/enums'
+import type { AssetCategory } from '@prisma/client'
 import { requireRoles } from '@/lib/rbac'
 
 // ── 품목 매핑 ─────────────────────────────────────────────────────────────────

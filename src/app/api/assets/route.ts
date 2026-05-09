@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { badRequest, created, ok, serverError } from '@/lib/api-response'
-import { AssetCategory, AssetStatus } from '@/generated/prisma/enums'
+import { AssetCategory, AssetStatus } from '@prisma/client'
 import { statusGroupToEnums } from '@/lib/utils'
 import { requireRoles, getRequestUser } from '@/lib/rbac'
 

@@ -4,8 +4,8 @@ import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { badRequest, created, ok, serverError } from '@/lib/api-response'
-import { ApprovalStatus, ApprovalType } from '@/generated/prisma/enums'
-import type { Prisma } from '@/generated/prisma/client'
+import { ApprovalStatus, ApprovalType } from '@prisma/client'
+import type { Prisma } from '@prisma/client'
 import { getRequestUser } from '@/lib/rbac'
 
 const VALID_APPROVAL_STATUSES = new Set(Object.values(ApprovalStatus))

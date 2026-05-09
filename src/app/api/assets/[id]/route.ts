@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { badRequest, notFound, ok, serverError } from '@/lib/api-response'
 import { requireRoles, getRequestUser } from '@/lib/rbac'
-import { AssetCategory, AssetStatus } from '@/generated/prisma/enums'
+import { AssetCategory, AssetStatus } from '@prisma/client'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
