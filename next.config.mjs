@@ -8,14 +8,14 @@ const nextConfig = {
   // Prisma 엔진 바이너리를 Vercel 배포 번들에 포함
   // custom output(src/generated/prisma) 사용 시 Next.js가 자동 추적하지 못하므로 명시 필요
   outputFileTracingIncludes: {
-    '/**': [
-      './src/generated/prisma/**/*',
-      './node_modules/.prisma/**/*',
-    ],
+    '/**': ['./src/generated/prisma/**/*'],
   },
 
-  // Prisma Client를 서버 번들에서 외부 패키지로 처리 (엔진 로딩 경로 안정화)
-  serverExternalPackages: ['@prisma/client', 'prisma'],
+  experimental: {
+    // Next.js 14: Prisma Client를 번들링하지 않고 외부 패키지로 처리
+    // (serverExternalPackages는 Next.js 15+ 문법 — 14에서는 여기에 설정)
+    serverComponentsExternalPackages: ['@prisma/client', 'prisma'],
+  },
 
   images: {
     remotePatterns: [
