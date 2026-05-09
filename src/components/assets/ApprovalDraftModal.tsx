@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { FileSignature, Sparkles, RefreshCcw, CheckCircle, Paperclip, X, FileText, Image } from 'lucide-react'
+import { FileSignature, Sparkles, RefreshCcw, CheckCircle, Paperclip, X, FileText, Image as ImageIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
 import { Modal } from '@/components/ui'
@@ -71,7 +71,7 @@ function formatBytes(n: number) {
 
 function FileIcon({ mimeType }: { mimeType: string }) {
   return mimeType.startsWith('image/')
-    ? <Image className="w-4 h-4 text-blue-500 shrink-0" />
+    ? <ImageIcon className="w-4 h-4 text-blue-500 shrink-0" />
     : <FileText className="w-4 h-4 text-slate-500 shrink-0" />
 }
 
