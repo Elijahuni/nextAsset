@@ -79,6 +79,7 @@ model User {
   assetsApproved Approval[]     @relation("Approver")
   historyLogs    HistoryLog[]
   notifications  Notification[]
+  approvalSteps  ApprovalStep[] @relation("StepApprover")
 
   @@map("users")
 }
@@ -165,15 +166,33 @@ model Approval {
   updatedAt   DateTime       @updatedAt
 
   applicant User            @relation("Applicant", fields: [applicantId], references: [id])
-  approver  User?           @relation("Approver", fields: [approverId], references: [id])
+  approver  User?           @relation("Approver",  fields: [approverId], references: [id])
   assets    ApprovalAsset[]
   files     ApprovalFile[]
+  steps     ApprovalStep[]
 
   @@index([applicantId])
   @@index([approverId])
   @@index([status])
   @@index([createdAt])
   @@map("approvals")
+}
+
+model ApprovalStep {
+  id         String    @id @default(cuid())
+  approvalId String
+  approval   Approval  @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  order      Int
+  approverId String
+  approver   User      @relation("StepApprover", fields: [approverId], references: [id])
+  status     String    @default("WAITING") // WAITING | PENDING | APPROVED | REJECTED
+  actedAt    DateTime?
+  comment    String?   @db.Text
+  createdAt  DateTime  @default(now())
+
+  @@unique([approvalId, order])
+  @@index([approvalId])
+  @@map("approval_steps")
 }
 
 model ApprovalFile {

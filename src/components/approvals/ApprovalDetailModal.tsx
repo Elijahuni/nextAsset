@@ -19,6 +19,15 @@ interface ApprovalAsset {
   }
 }
 
+interface ApprovalStep {
+  id:         string
+  order:      number
+  status:     string  // WAITING | PENDING | APPROVED | REJECTED
+  actedAt:    string | null
+  comment:    string | null
+  approver:   { id: string; name: string; role: string }
+}
+
 interface ApprovalDetail {
   id: string
   title: string
@@ -29,6 +38,7 @@ interface ApprovalDetail {
   applicant: { id: string; name: string; department: string; role: string }
   approver: { id: string; name: string; role: string } | null
   assets: ApprovalAsset[]
+  steps: ApprovalStep[]
 }
 
 interface ApprovalFile {
@@ -288,7 +298,10 @@ export default function ApprovalDetailModal({ approvalId, onClose, onUpdated }: 
               {[
                 { label: '결재 유형', value: TYPE_LABEL[approval.type] ?? approval.type },
                 { label: '기안자', value: `${approval.applicant?.name} (${approval.applicant?.department})` },
-                { label: '결재자', value: approval.approver ? approval.approver.name : '미지정' },
+                ...(!approval.steps?.length
+                  ? [{ label: '결재자', value: approval.approver ? approval.approver.name : '미지정' }]
+                  : []
+                ),
               ].map(({ label, value }) => (
                 <div key={label} className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 border border-slate-100 dark:border-slate-600">
                   <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">{label}</p>
@@ -296,6 +309,59 @@ export default function ApprovalDetailModal({ approvalId, onClose, onUpdated }: 
                 </div>
               ))}
             </div>
+
+            {/* 다단계 결재선 */}
+            {approval.steps?.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3">결재선</p>
+                <div className="space-y-2">
+                  {approval.steps.map((step, idx) => {
+                    const isActive = step.status === 'PENDING'
+                    const isDone   = step.status === 'APPROVED' || step.status === 'REJECTED'
+                    const stepStatusColor: Record<string, string> = {
+                      WAITING:  'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600',
+                      PENDING:  'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700',
+                      APPROVED: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700',
+                      REJECTED: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700',
+                    }
+                    const stepLabel: Record<string, string> = { WAITING: '대기', PENDING: '검토중', APPROVED: '승인', REJECTED: '반려' }
+                    return (
+                      <div
+                        key={step.id}
+                        className={`flex items-start gap-3 px-4 py-3 rounded-xl border transition-colors ${
+                          isActive
+                            ? 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-700'
+                            : 'bg-white dark:bg-slate-700/50 border-slate-200 dark:border-slate-600'
+                        }`}
+                      >
+                        <span className={`flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${
+                          isActive ? 'bg-amber-200 text-amber-800' :
+                          step.status === 'APPROVED' ? 'bg-emerald-200 text-emerald-800' :
+                          step.status === 'REJECTED' ? 'bg-red-200 text-red-700' :
+                          'bg-slate-200 text-slate-500'
+                        }`}>
+                          {idx + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{step.approver.name}</p>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${stepStatusColor[step.status] ?? stepStatusColor.WAITING}`}>
+                              {stepLabel[step.status] ?? step.status}
+                            </span>
+                            {isDone && step.actedAt && (
+                              <span className="text-[10px] text-slate-400">{step.actedAt.split('T')[0]}</span>
+                            )}
+                          </div>
+                          {step.comment && (
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-snug">{step.comment}</p>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* TRANSFER 이관 목적지 (메타블록 파싱) */}
             {approval.type === 'TRANSFER' && (() => {

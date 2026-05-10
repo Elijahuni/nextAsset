@@ -19,6 +19,8 @@ const CreateApprovalSchema = z.object({
   assetIds:    z.array(z.string()).optional(),
   reason:      z.string().optional(),
   approverId:  z.string().optional(),
+  // 다단계 결재선 (최대 3명) — 제공 시 approverId보다 우선
+  approverIds: z.array(z.string()).max(3).optional(),
 })
 
 // GET /api/approvals
@@ -111,7 +113,7 @@ export async function POST(request: NextRequest) {
       return badRequest(parsed.error.issues.map((e: { message: string }) => e.message).join(', '))
     }
     // applicantId는 클라이언트가 보내더라도 세션 사용자로 강제 — 타인 명의 기안 방지
-    const { title, type, assetIds, reason, approverId } = parsed.data
+    const { title, type, assetIds, reason, approverId, approverIds } = parsed.data
     const applicantId = sessionUser.id
 
     // assetIds 선택적 — 단독 기안 허용
@@ -124,15 +126,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 다단계 결재선 구성 — approverIds 우선, 없으면 approverId 단독
+    const stepIds: string[] = approverIds?.filter(Boolean) ?? (approverId ? [approverId] : [])
+    // 첫 번째 결재자를 approverId에도 설정 (하위 호환)
+    const primaryApproverId = stepIds[0] ?? undefined
+
     const approval = await prisma.approval.create({
       data: {
         title,
         type,
         applicantId,
         ...(reason && { reason }),
-        ...(approverId && { approverId }),
+        ...(primaryApproverId && { approverId: primaryApproverId }),
         ...(ids.length > 0 && {
           assets: { create: ids.map((assetId: string) => ({ assetId })) },
+        }),
+        ...(stepIds.length > 0 && {
+          steps: {
+            create: stepIds.map((sid, idx) => ({
+              approverId: sid,
+              order:      idx + 1,
+              status:     idx === 0 ? 'PENDING' : 'WAITING',
+            })),
+          },
         }),
       },
       include: {
@@ -142,17 +158,23 @@ export async function POST(request: NextRequest) {
             asset: { select: { id: true, code: true, name: true, status: true } },
           },
         },
+        steps: {
+          include: { approver: { select: { id: true, name: true, role: true } } },
+          orderBy: { order: 'asc' },
+        },
       },
     })
 
-    // 결재자가 지정된 경우 알림 생성 (비동기, 실패해도 무음)
-    if (approval.approverId) {
-      const TYPE_LABEL: Record<string, string> = {
-        PURCHASE: '구매', DISPOSAL: '폐기', TRANSFER: '이관',
-        MAINTENANCE_REQUEST: '유지보수', RENTAL: '대여',
-      }
+    // TYPE 레이블
+    const TYPE_LABEL: Record<string, string> = {
+      PURCHASE: '구매', DISPOSAL: '폐기', TRANSFER: '이관',
+      MAINTENANCE_REQUEST: '유지보수', RENTAL: '대여',
+    }
+
+    // 첫 번째 결재자에게 알림 (다단계인 경우 1순위에게만)
+    if (primaryApproverId) {
       createNotification({
-        userId: approval.approverId,
+        userId: primaryApproverId,
         type:   'APPROVAL_REQUEST',
         title:  '새 결재 요청',
         body:   `${sessionUser.name}님이 [${TYPE_LABEL[approval.type] ?? approval.type}] "${approval.title}" 결재를 요청했습니다.`,

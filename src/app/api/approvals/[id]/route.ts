@@ -43,6 +43,10 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
             },
           },
         },
+        steps: {
+          include: { approver: { select: { id: true, name: true, role: true } } },
+          orderBy: { order: 'asc' },
+        },
       },
     })
 
@@ -92,6 +96,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       where: { id },
       include: {
         assets: { select: { assetId: true } },
+        steps:  { orderBy: { order: 'asc' } },
       },
     })
 
@@ -115,10 +120,60 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     if (status === 'APPROVED') {
       const effect = APPROVAL_EFFECT[existing.type]
       const assetIds = existing.assets.map((a) => a.assetId)
-      const approverIdForLog = sessionUser.id  // APPROVED 분기에서는 항상 존재 (type narrowing)
 
+      // 다단계 결재: 현재 PENDING 스텝 찾기
+      const currentStep = existing.steps.find((s) => s.status === 'PENDING')
+
+      if (currentStep) {
+        // 이 스텝을 승인하고, 다음 스텝이 있으면 활성화
+        const nextStep = existing.steps.find(
+          (s) => s.status === 'WAITING' && s.order > currentStep.order
+        )
+
+        if (nextStep) {
+          // 중간 단계 승인 — 아직 최종 승인 아님
+          const result = await prisma.$transaction(async (tx) => {
+            await tx.approvalStep.update({
+              where: { id: currentStep.id },
+              data: { status: 'APPROVED', actedAt: new Date(), ...(reason !== undefined && { comment: reason }) },
+            })
+            await tx.approvalStep.update({
+              where: { id: nextStep.id },
+              data: { status: 'PENDING' },
+            })
+            return tx.approval.update({
+              where: { id },
+              data: { approverId: nextStep.approverId },
+              include: {
+                applicant: { select: { id: true, name: true, department: true } },
+                approver:  { select: { id: true, name: true } },
+                assets: { include: { asset: { select: { id: true, code: true, name: true, status: true } } } },
+                steps: { include: { approver: { select: { id: true, name: true, role: true } } }, orderBy: { order: 'asc' } },
+              },
+            })
+          })
+
+          // 다음 결재자에게 알림
+          createNotification({
+            userId: nextStep.approverId,
+            type:   'APPROVAL_REQUEST',
+            title:  '결재 차례가 되었습니다',
+            body:   `"${existing.title}" 결재의 ${nextStep.order}번째 결재자로 지정되었습니다.`,
+            link:   '/approvals',
+          })
+
+          return ok(result)
+        }
+
+        // 마지막 스텝 승인 → 최종 승인 처리로 진행
+        await prisma.approvalStep.update({
+          where: { id: currentStep.id },
+          data: { status: 'APPROVED', actedAt: new Date(), ...(reason !== undefined && { comment: reason }) },
+        })
+      }
+
+      // 최종 승인 (스텝 없는 단일 결재 또는 모든 스텝 완료)
       const result = await prisma.$transaction(async (tx) => {
-        // 1. 결재 상태 업데이트
         const approval = await tx.approval.update({
           where: { id },
           data: {
@@ -129,55 +184,51 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           include: {
             applicant: { select: { id: true, name: true, department: true } },
             approver:  { select: { id: true, name: true } },
-            assets: {
-              include: {
-                asset: { select: { id: true, code: true, name: true, status: true } },
-              },
-            },
+            assets: { include: { asset: { select: { id: true, code: true, name: true, status: true } } } },
+            steps: { include: { approver: { select: { id: true, name: true, role: true } } }, orderBy: { order: 'asc' } },
           },
         })
 
-        // 2. 결재 유형에 따라 자산 상태 일괄 업데이트 (소프트 삭제된 자산 제외)
-        // TRANSFER: reason에서 이관 목적지 메타블록 파싱
+        // TRANSFER 이관 메타블록 파싱
         let transferMeta: { dept: string; loc: string } | null = null
         if (existing.type === 'TRANSFER' && existing.reason) {
           const metaMatch = existing.reason.match(/__TRANSFER_META__(.+?)__END__/)
           if (metaMatch) {
-            try { transferMeta = JSON.parse(metaMatch[1]) } catch { /* ignore parse error */ }
+            try { transferMeta = JSON.parse(metaMatch[1]) } catch { /* ignore */ }
           }
         }
 
-        await tx.asset.updateMany({
-          where: { id: { in: assetIds }, deletedAt: null },
-          data: {
-            status: effect.assetStatus,
-            ...(transferMeta?.dept && { department: transferMeta.dept }),
-            ...(transferMeta?.loc  && { location:   transferMeta.loc  }),
-          },
-        })
+        if (assetIds.length > 0) {
+          await tx.asset.updateMany({
+            where: { id: { in: assetIds }, deletedAt: null },
+            data: {
+              status: effect.assetStatus,
+              ...(transferMeta?.dept && { department: transferMeta.dept }),
+              ...(transferMeta?.loc  && { location:   transferMeta.loc  }),
+            },
+          })
 
-        // 3. 자산별 HistoryLog 생성
-        const transferDetail = transferMeta
-          ? ` → 부서: ${transferMeta.dept}, 위치: ${transferMeta.loc}`
-          : ''
-        await tx.historyLog.createMany({
-          data: assetIds.map((assetId) => ({
-            assetId,
-            userId: approverIdForLog,
-            type: effect.historyType,
-            detail: `[${effect.detailPrefix}] ${approval.title} (결재 ID: ${id})${transferDetail}`,
-          })),
-        })
+          const transferDetail = transferMeta
+            ? ` → 부서: ${transferMeta.dept}, 위치: ${transferMeta.loc}`
+            : ''
+          await tx.historyLog.createMany({
+            data: assetIds.map((assetId) => ({
+              assetId,
+              userId: sessionUser.id,
+              type: effect.historyType,
+              detail: `[${effect.detailPrefix}] ${approval.title} (결재 ID: ${id})${transferDetail}`,
+            })),
+          })
+        }
 
         return approval
       })
 
-      // 기안자에게 승인 알림 (트랜잭션 밖, 실패해도 무음)
       createNotification({
         userId: result.applicant.id,
         type:   'APPROVAL_APPROVED',
         title:  '결재가 승인되었습니다',
-        body:   `"${result.title}" 결재가 ${sessionUser.name}님에 의해 승인되었습니다.`,
+        body:   `"${result.title}" 결재가 최종 승인되었습니다.`,
         link:   '/approvals',
       })
 
@@ -185,6 +236,18 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
 
     // ── REJECTED / CANCELLED ───────────────────────────────────────────────
+
+    // REJECTED: 현재 PENDING 스텝도 함께 반려 처리
+    if (status === 'REJECTED') {
+      const currentStep = existing.steps.find((s) => s.status === 'PENDING')
+      if (currentStep) {
+        await prisma.approvalStep.update({
+          where: { id: currentStep.id },
+          data: { status: 'REJECTED', actedAt: new Date(), ...(reason !== undefined && { comment: reason }) },
+        })
+      }
+    }
+
     const approval = await prisma.approval.update({
       where: { id },
       data: {
@@ -199,6 +262,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           include: {
             asset: { select: { id: true, code: true, name: true, status: true } },
           },
+        },
+        steps: {
+          include: { approver: { select: { id: true, name: true, role: true } } },
+          orderBy: { order: 'asc' },
         },
       },
     })
