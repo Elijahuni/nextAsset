@@ -114,10 +114,11 @@ model Asset {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
-  approvals       ApprovalAsset[]
-  historyLogs     HistoryLog[]
-  maintenanceLogs MaintenanceLog[]
-  files           AssetFile[]
+  approvals            ApprovalAsset[]
+  historyLogs          HistoryLog[]
+  maintenanceLogs      MaintenanceLog[]
+  maintenanceSchedules MaintenanceSchedule[]
+  files                AssetFile[]
 
   @@index([department])
   @@index([status])
@@ -207,6 +208,22 @@ model MaintenanceLog {
   @@index([assetId])
   @@index([date])
   @@map("maintenance_logs")
+}
+
+model MaintenanceSchedule {
+  id           String    @id @default(cuid())
+  assetId      String
+  asset        Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  description  String    // 점검 내용 설명
+  intervalDays Int       // 점검 주기 (일)
+  lastDoneAt   DateTime? // 마지막 완료일
+  nextDueAt    DateTime  // 다음 점검 예정일
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([assetId])
+  @@index([nextDueAt])
+  @@map("maintenance_schedules")
 }
 
 model AssetFile {

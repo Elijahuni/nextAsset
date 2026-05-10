@@ -1,12 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCcw, Wrench, History, Info, CheckCircle, Pencil, X, ShieldAlert, QrCode, FileText } from 'lucide-react'
+import { RefreshCcw, Wrench, History, Info, CheckCircle, Pencil, X, ShieldAlert, QrCode, FileText, CalendarClock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
 import { ASSET_CATEGORY_LABEL, ASSET_STATUS_LABEL, formatCurrency, getWarrantyStatus, getActiveLabel } from '@/lib/utils'
 import { Modal } from '@/components/ui'
 import AssetFilesTab from './AssetFilesTab'
+import MaintenanceScheduleTab from './MaintenanceScheduleTab'
 import QrTagModal from './QrTagModal'
 import AssetReportCard from './AssetReportCard'
 import type { ApiAsset, ApiHistoryLog, ApiMaintenanceLog } from '@/types'
@@ -41,7 +42,7 @@ const HISTORY_TYPE_LABEL: Record<string, string> = {
 
 const TODAY = new Date().toISOString().split('T')[0]
 
-type Tab = 'info' | 'maintenance' | 'history'
+type Tab = 'info' | 'maintenance' | 'schedule' | 'history'
 
 export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetDetailModalProps) {
   const { canManageAssets, canManageSystem } = useUser()
@@ -125,9 +126,10 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
   }
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; show: boolean }[] = [
-    { key: 'info',        label: '기본정보', icon: <Info className="w-4 h-4" />,    show: true },
-    { key: 'maintenance', label: '유지보수', icon: <Wrench className="w-4 h-4" />,  show: canManageAssets },
-    { key: 'history',     label: '이력',     icon: <History className="w-4 h-4" />, show: true },
+    { key: 'info',        label: '기본정보',   icon: <Info className="w-4 h-4" />,         show: true },
+    { key: 'maintenance', label: '유지보수',   icon: <Wrench className="w-4 h-4" />,       show: canManageAssets },
+    { key: 'schedule',    label: '정기점검',   icon: <CalendarClock className="w-4 h-4" />, show: true },
+    { key: 'history',     label: '이력',       icon: <History className="w-4 h-4" />,      show: true },
   ]
 
   return (
@@ -429,6 +431,11 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
                   </div>
                 )}
               </div>
+            )}
+
+            {/* ── 정기점검 탭 ── */}
+            {tab === 'schedule' && (
+              <MaintenanceScheduleTab assetId={asset.id} canManage={canManageAssets} />
             )}
 
             {/* ── 이력 탭 ── */}

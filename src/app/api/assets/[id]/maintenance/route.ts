@@ -52,15 +52,28 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const asset = await prisma.asset.findUnique({ where: { id } })
     if (!asset) return notFound('Asset')
 
+    const logDate = new Date(date)
+
     const log = await prisma.maintenanceLog.create({
       data: {
         assetId: id,
-        date: new Date(date),
+        date:    logDate,
         vendor,
         cost,
         detail,
       },
     })
+
+    // 정기점검 스케줄 자동 갱신: 완료일 기준으로 nextDueAt 재계산
+    const schedules = await prisma.maintenanceSchedule.findMany({ where: { assetId: id } })
+    for (const s of schedules) {
+      const next = new Date(logDate)
+      next.setDate(next.getDate() + s.intervalDays)
+      await prisma.maintenanceSchedule.update({
+        where: { id: s.id },
+        data:  { lastDoneAt: logDate, nextDueAt: next },
+      })
+    }
 
     // 유지보수 HistoryLog
     await prisma.historyLog.create({
