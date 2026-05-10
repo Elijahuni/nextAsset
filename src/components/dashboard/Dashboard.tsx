@@ -86,6 +86,7 @@ function DashboardSkeleton() {
 import { useUser } from '@/context/user-context'
 import { CATEGORY_COLORS, formatCurrency } from '@/lib/utils'
 import { Skeleton } from '@/components/ui'
+import StatsCharts from './StatsCharts'
 
 // ─── API 응답 타입 ────────────────────────────────────────────────────────────
 
@@ -244,6 +245,9 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* SVG 차트 섹션 */}
+      {!isEmployee && <StatsCharts />}
 
       {/* 카테고리·상태 차트 */}
       {totalCount > 0 && (
