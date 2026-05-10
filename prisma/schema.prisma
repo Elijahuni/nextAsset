@@ -57,6 +57,13 @@ enum HistoryType {
   STATUS_CHANGED
 }
 
+enum AuditItemResult {
+  PENDING
+  CONFIRMED
+  MISSING
+  SURPLUS
+}
+
 // ─── Models ────────────────────────────────────────────────────────────────
 
 model User {
@@ -118,6 +125,7 @@ model Asset {
   historyLogs          HistoryLog[]
   maintenanceLogs      MaintenanceLog[]
   maintenanceSchedules MaintenanceSchedule[]
+  auditItems           AssetAuditItem[]
   files                AssetFile[]
 
   @@index([department])
@@ -208,6 +216,41 @@ model MaintenanceLog {
   @@index([assetId])
   @@index([date])
   @@map("maintenance_logs")
+}
+
+model AssetAudit {
+  id        String   @id @default(cuid())
+  name      String
+  startDate DateTime
+  endDate   DateTime?
+  status    String   @default("ACTIVE") // 'ACTIVE' | 'COMPLETED'
+  createdBy String   // 실사 담당자 이름
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items AssetAuditItem[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("asset_audits")
+}
+
+model AssetAuditItem {
+  id        String          @id @default(cuid())
+  auditId   String
+  assetId   String
+  result    AuditItemResult @default(PENDING)
+  auditedBy String?         // 처리자 이름
+  auditedAt DateTime?
+  note      String?
+
+  audit AssetAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  asset Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([auditId, assetId])
+  @@index([auditId])
+  @@index([assetId])
+  @@map("asset_audit_items")
 }
 
 model MaintenanceSchedule {
