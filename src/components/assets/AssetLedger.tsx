@@ -112,29 +112,35 @@ export default function AssetLedger() {
   const toggleOne = (id: string) =>
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
 
-  // ── CSV 다운로드 (현재 필터 기준 전체) ───────────────────────────────────────
+  // ── Excel 다운로드 (현재 필터 그대로 export API에 전달) ───────────────────
+  const [xlsxLoading, setXlsxLoading] = useState(false)
   const handleDownload = async () => {
+    setXlsxLoading(true)
     try {
-      const res  = await fetch(`/api/assets?${buildParams(1, 9999)}`)
-      const json = await res.json() as PaginatedAssets
-      const list = json.data ?? []
-      const header = ['자산코드', '자산명', '품목', '부서', '위치', '상태', '취득가액', '취득일']
-      const rows = list.map((a) => [
-        a.code, a.name,
-        ASSET_CATEGORY_LABEL[a.category] ?? a.category,
-        a.department, a.location,
-        ASSET_STATUS_LABEL[a.status] ?? a.status,
-        Number(a.price).toLocaleString(),
-        a.acquiredDate?.split('T')[0] ?? '',
-      ])
-      const csv  = [header, ...rows].map((r) => r.join(',')).join('\n')
-      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
-      a.href = url; a.download = '자산원장.csv'; a.click()
+      const params = new URLSearchParams()
+      if (debouncedSearch)   params.set('q', debouncedSearch)
+      if (filterStatus)      params.set('status', filterStatus)
+      else if (filterActive) params.set('active', filterActive)
+      if (filterCategory)    params.set('category', filterCategory)
+      const dept = currentUser.role === 'manager' ? currentUser.department : filterDept
+      if (dept) params.set('department', dept)
+
+      const res = await fetch(`/api/export/assets?${params}`)
+      if (!res.ok) { toast.error('Excel 생성에 실패했습니다.'); return }
+
+      const blob    = await res.blob()
+      const url     = URL.createObjectURL(blob)
+      const dateStr = new Date().toISOString().split('T')[0]
+      const anchor  = document.createElement('a')
+      anchor.href     = url
+      anchor.download = `자산보고서_${dateStr}.xlsx`
+      anchor.click()
       URL.revokeObjectURL(url)
+      toast.success('Excel 파일이 다운로드되었습니다.')
     } catch {
       toast.error('다운로드에 실패했습니다.')
+    } finally {
+      setXlsxLoading(false)
     }
   }
 
@@ -193,9 +199,11 @@ export default function AssetLedger() {
                 </button>
                 <button
                   onClick={handleDownload}
-                  className="flex items-center px-4 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-sm"
+                  disabled={xlsxLoading}
+                  className="flex items-center px-4 py-2.5 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
                 >
-                  <Download className="w-4 h-4 mr-2 text-slate-500" /> 엑셀 다운
+                  <Download className={`w-4 h-4 mr-2 ${xlsxLoading ? 'animate-pulse' : ''}`} />
+                  {xlsxLoading ? '생성 중...' : 'Excel 다운'}
                 </button>
               </>
             )}
