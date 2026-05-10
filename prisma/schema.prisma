@@ -68,11 +68,28 @@ model User {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  assetsApplied  Approval[]   @relation("Applicant")
-  assetsApproved Approval[]   @relation("Approver")
+  assetsApplied  Approval[]     @relation("Applicant")
+  assetsApproved Approval[]     @relation("Approver")
   historyLogs    HistoryLog[]
+  notifications  Notification[]
 
   @@map("users")
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String    // 'APPROVAL_REQUEST' | 'APPROVAL_APPROVED' | 'APPROVAL_REJECTED' | 'APPROVAL_CANCELLED' | 'WARRANTY_EXPIRING'
+  title     String
+  body      String
+  link      String?   // 클릭 시 이동할 경로 (예: /approvals)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, readAt])
+  @@map("notifications")
 }
 
 model Asset {

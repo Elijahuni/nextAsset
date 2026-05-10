@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { badRequest, notFound, ok, serverError } from '@/lib/api-response'
 import type { ApprovalType, AssetStatus, HistoryType } from '@prisma/client'
 import { requireRoles, getRequestUser } from '@/lib/rbac'
+import { createNotification } from '@/lib/notifications'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -171,6 +172,15 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         return approval
       })
 
+      // 기안자에게 승인 알림 (트랜잭션 밖, 실패해도 무음)
+      createNotification({
+        userId: result.applicant.id,
+        type:   'APPROVAL_APPROVED',
+        title:  '결재가 승인되었습니다',
+        body:   `"${result.title}" 결재가 ${sessionUser.name}님에 의해 승인되었습니다.`,
+        link:   '/approvals',
+      })
+
       return ok(result)
     }
 
@@ -192,6 +202,25 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         },
       },
     })
+
+    // 반려: 기안자에게 알림 / 취소: 결재자에게 알림
+    if (status === 'REJECTED' && approval.applicant) {
+      createNotification({
+        userId: approval.applicant.id,
+        type:   'APPROVAL_REJECTED',
+        title:  '결재가 반려되었습니다',
+        body:   `"${approval.title}" 결재가 ${sessionUser.name}님에 의해 반려되었습니다.`,
+        link:   '/approvals',
+      })
+    } else if (status === 'CANCELLED' && approval.approverId) {
+      createNotification({
+        userId: approval.approverId,
+        type:   'APPROVAL_CANCELLED',
+        title:  '결재가 취소되었습니다',
+        body:   `"${approval.title}" 결재가 기안자에 의해 취소되었습니다.`,
+        link:   '/approvals',
+      })
+    }
 
     return ok(approval)
   } catch (error) {

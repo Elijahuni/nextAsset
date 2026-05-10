@@ -7,6 +7,7 @@ import { badRequest, created, ok, serverError } from '@/lib/api-response'
 import { ApprovalStatus, ApprovalType } from '@prisma/client'
 import type { Prisma } from '@prisma/client'
 import { getRequestUser } from '@/lib/rbac'
+import { createNotification } from '@/lib/notifications'
 
 const VALID_APPROVAL_STATUSES = new Set(Object.values(ApprovalStatus))
 const VALID_APPROVAL_TYPES    = new Set(Object.values(ApprovalType))
@@ -143,6 +144,21 @@ export async function POST(request: NextRequest) {
         },
       },
     })
+
+    // 결재자가 지정된 경우 알림 생성 (비동기, 실패해도 무음)
+    if (approval.approverId) {
+      const TYPE_LABEL: Record<string, string> = {
+        PURCHASE: '구매', DISPOSAL: '폐기', TRANSFER: '이관',
+        MAINTENANCE_REQUEST: '유지보수', RENTAL: '대여',
+      }
+      createNotification({
+        userId: approval.approverId,
+        type:   'APPROVAL_REQUEST',
+        title:  '새 결재 요청',
+        body:   `${sessionUser.name}님이 [${TYPE_LABEL[approval.type] ?? approval.type}] "${approval.title}" 결재를 요청했습니다.`,
+        link:   '/approvals',
+      })
+    }
 
     return created(approval)
   } catch (error) {
