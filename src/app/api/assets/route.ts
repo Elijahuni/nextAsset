@@ -50,6 +50,37 @@ export async function GET(request: NextRequest) {
     const activeGroup = searchParams.get('active') as 'active' | 'inactive' | null
     const activeEnums = activeGroup ? statusGroupToEnums(activeGroup) : []
 
+    // ── 고급 필터 파라미터 ─────────────────────────────────────────────────────
+    const dateFrom = searchParams.get('dateFrom')   // YYYY-MM-DD
+    const dateTo   = searchParams.get('dateTo')
+    const priceMin = searchParams.get('priceMin')
+    const priceMax = searchParams.get('priceMax')
+    const warrantyFilter = searchParams.get('warranty') === '1'
+
+    // 취득일 범위 (양쪽 유효할 때만 적용)
+    const acquiredDateFilter = (() => {
+      const from = dateFrom ? new Date(dateFrom) : null
+      const to   = dateTo   ? new Date(`${dateTo}T23:59:59`) : null
+      if (from && to)  return { gte: from, lte: to }
+      if (from)        return { gte: from }
+      if (to)          return { lte: to }
+      return null
+    })()
+
+    // 가격 범위
+    const priceFilter = (() => {
+      const mn = priceMin ? Number(priceMin) : null
+      const mx = priceMax ? Number(priceMax) : null
+      if (mn !== null && !isNaN(mn) && mx !== null && !isNaN(mx)) return { gte: mn, lte: mx }
+      if (mn !== null && !isNaN(mn)) return { gte: mn }
+      if (mx !== null && !isNaN(mx)) return { lte: mx }
+      return null
+    })()
+
+    // 보증 만료 임박 (30일 이내)
+    const thirtyDaysFromNow = new Date()
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30)
+
     const where = {
       deletedAt: null,           // 소프트 삭제된 자산 제외
       ...(q && {
@@ -68,6 +99,9 @@ export async function GET(request: NextRequest) {
       // 개별 상태 vs 그룹 상태 — 둘 다 있으면 개별 우선
       ...(status      ? { status } : activeEnums.length ? { status: { in: activeEnums as AssetStatus[] } } : {}),
       ...(category   && { category }),
+      ...(acquiredDateFilter && { acquiredDate: acquiredDateFilter }),
+      ...(priceFilter        && { price:        priceFilter }),
+      ...(warrantyFilter     && { warrantyDate: { not: null, lte: thirtyDaysFromNow } }),
     }
 
     // ── 보증기간 임박·만료 자산만 빠르게 반환 (Header 알림 전용) ──────────
