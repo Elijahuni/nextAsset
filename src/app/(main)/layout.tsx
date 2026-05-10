@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useUser } from '@/context/user-context'
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
+import MobileTabBar from '@/components/layout/MobileTabBar'
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -39,10 +40,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} pendingCount={pendingCount} />
       <main className="flex-1 flex flex-col min-w-0 bg-slate-50 dark:bg-slate-900 print:bg-white print:m-0 print:p-0">
         <Header onMenuToggle={() => setSidebarOpen((o) => !o)} pendingCount={pendingCount} />
-        <div className="flex-1 overflow-auto p-4 lg:p-8 custom-scrollbar print:p-2 print:overflow-visible">
+        <div className="flex-1 overflow-auto p-4 lg:p-8 custom-scrollbar print:p-2 print:overflow-visible pb-20 lg:pb-8">
           {children}
         </div>
       </main>
+      <MobileTabBar pendingCount={pendingCount} />
     </div>
   )
 }
