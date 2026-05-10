@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { ok, serverError } from '@/lib/api-response'
 import { getRequestUser } from '@/lib/rbac'
 import { ASSET_STATUS_LABEL, ASSET_CATEGORY_LABEL } from '@/lib/utils'
+import { withCache } from '@/lib/redis'
 
 // GET /api/stats — 대시보드용 집계 통계. MANAGER는 본인 부서만 집계.
 export async function GET(request: NextRequest) {
@@ -33,48 +34,54 @@ export async function GET(request: NextRequest) {
           }
         : {}
 
-    const [assets, pendingApprovals] = await Promise.all([
-      prisma.asset.findMany({
-        where: { deletedAt: null, ...deptFilter },
-        select: { status: true, category: true, price: true, department: true },
-      }),
-      prisma.approval.count({ where: { status: 'PENDING', ...pendingWhere } }),
-    ])
+    const cacheKey = `stats:${sessionUser.role}:${sessionUser.department ?? 'all'}`
 
-    const totalCount = assets.length
-    const totalValue = assets.reduce((sum, a) => sum + Number(a.price), 0)
-    const inUseCount = assets.filter((a) => a.status === 'IN_USE').length
+    const result = await withCache(cacheKey, 300, async () => {
+      const [assets, pendingApprovals] = await Promise.all([
+        prisma.asset.findMany({
+          where: { deletedAt: null, ...deptFilter },
+          select: { status: true, category: true, price: true, department: true },
+        }),
+        prisma.approval.count({ where: { status: 'PENDING', ...pendingWhere } }),
+      ])
 
-    const statusCounts = assets.reduce<Record<string, number>>((acc, a) => {
-      const label = ASSET_STATUS_LABEL[a.status] ?? a.status
-      acc[label] = (acc[label] ?? 0) + 1
-      return acc
-    }, {})
+      const totalCount = assets.length
+      const totalValue = assets.reduce((sum, a) => sum + Number(a.price), 0)
+      const inUseCount = assets.filter((a) => a.status === 'IN_USE').length
 
-    const categoryValueMap = assets.reduce<Record<string, number>>((acc, a) => {
-      const label = ASSET_CATEGORY_LABEL[a.category] ?? a.category
-      acc[label] = (acc[label] ?? 0) + Number(a.price)
-      return acc
-    }, {})
+      const statusCounts = assets.reduce<Record<string, number>>((acc, a) => {
+        const label = ASSET_STATUS_LABEL[a.status] ?? a.status
+        acc[label] = (acc[label] ?? 0) + 1
+        return acc
+      }, {})
 
-    const categoryChartData = Object.entries(categoryValueMap)
-      .map(([name, value]) => ({
-        name,
-        value,
-        percentage: totalValue ? (value / totalValue) * 100 : 0,
-      }))
-      .sort((a, b) => b.value - a.value)
+      const categoryValueMap = assets.reduce<Record<string, number>>((acc, a) => {
+        const label = ASSET_CATEGORY_LABEL[a.category] ?? a.category
+        acc[label] = (acc[label] ?? 0) + Number(a.price)
+        return acc
+      }, {})
 
-    const deptCounts = assets.reduce<Record<string, number>>((acc, a) => {
-      acc[a.department] = (acc[a.department] ?? 0) + 1
-      return acc
-    }, {})
+      const categoryChartData = Object.entries(categoryValueMap)
+        .map(([name, value]) => ({
+          name,
+          value,
+          percentage: totalValue ? (value / totalValue) * 100 : 0,
+        }))
+        .sort((a, b) => b.value - a.value)
 
-    const topDepartments = Object.entries(deptCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5) as [string, number][]
+      const deptCounts = assets.reduce<Record<string, number>>((acc, a) => {
+        acc[a.department] = (acc[a.department] ?? 0) + 1
+        return acc
+      }, {})
 
-    return ok({ totalCount, totalValue, inUseCount, pendingApprovals, statusCounts, categoryChartData, topDepartments })
+      const topDepartments = Object.entries(deptCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5) as [string, number][]
+
+      return { totalCount, totalValue, inUseCount, pendingApprovals, statusCounts, categoryChartData, topDepartments }
+    })
+
+    return ok(result)
   } catch (error) {
     return serverError(error)
   }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import {
   Search, Upload, Download, FileSignature, PlusCircle,
   Printer, Filter, ChevronLeft, ChevronRight, Image as ImageIcon, QrCode,
@@ -10,13 +11,15 @@ import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
 import { ASSET_STATUS_LABEL, ASSET_CATEGORY_LABEL, formatCurrency, getActiveLabel } from '@/lib/utils'
 import { Skeleton, Badge, EmptyTableRow } from '@/components/ui'
-import BulkUploadModal from './BulkUploadModal'
-import AssetCreateModal from './AssetCreateModal'
-import AssetDetailModal from './AssetDetailModal'
-import ApprovalDraftModal from './ApprovalDraftModal'
-import QrTagModal from './QrTagModal'
 import AdvancedFilterPanel, { AdvancedFilters, ADVANCED_FILTER_DEFAULTS } from './AdvancedFilterPanel'
 import type { ApiAsset, PaginatedAssets } from '@/types'
+
+// 무거운 모달은 lazy load — 초기 번들에서 제외
+const BulkUploadModal    = dynamic(() => import('./BulkUploadModal'))
+const AssetCreateModal   = dynamic(() => import('./AssetCreateModal'))
+const AssetDetailModal   = dynamic(() => import('./AssetDetailModal'))
+const ApprovalDraftModal = dynamic(() => import('./ApprovalDraftModal'))
+const QrTagModal         = dynamic(() => import('./QrTagModal'))
 
 const LIMIT = 50
 

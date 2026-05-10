@@ -7,6 +7,7 @@ import { badRequest, created, ok, serverError } from '@/lib/api-response'
 import { AssetCategory, AssetStatus } from '@prisma/client'
 import { statusGroupToEnums } from '@/lib/utils'
 import { requireRoles, getRequestUser } from '@/lib/rbac'
+import { invalidateCache } from '@/lib/redis'
 
 const CreateAssetSchema = z.object({
   code:         z.string().min(1, '자산코드는 필수입니다.'),
@@ -221,6 +222,9 @@ export async function POST(request: NextRequest) {
         detail:  `[자산 등록] ${asset.name} (${asset.code}) 신규 등록 — 부서: ${department}, 위치: ${location}${assignedTo ? `, 담당자: ${assignedTo}` : ''}`,
       },
     })
+
+    // 자산 변경 → 통계 캐시 무효화
+    await invalidateCache([`stats:ADMIN:all`, `stats:MANAGER:${department}`, `stats:STAFF:all`])
 
     return created(asset)
   } catch (error: unknown) {

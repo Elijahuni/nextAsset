@@ -132,6 +132,11 @@ model Asset {
   @@index([status])
   @@index([category])
   @@index([createdAt])
+  @@index([deletedAt, department])       // 부서 필터 + 소프트삭제
+  @@index([deletedAt, status])           // 상태 필터 + 소프트삭제
+  @@index([deletedAt, category])         // 카테고리 필터 + 소프트삭제
+  @@index([deletedAt, acquiredDate])     // 취득일 범위 + 소프트삭제
+  @@index([deletedAt, price])            // 가격 범위 + 소프트삭제
   @@map("assets")
 }
 

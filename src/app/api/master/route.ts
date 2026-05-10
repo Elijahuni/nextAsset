@@ -4,6 +4,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ok, badRequest, serverError } from '@/lib/api-response'
 import { requireRoles } from '@/lib/rbac'
+import { withCache, invalidateCache } from '@/lib/redis'
+
+const MASTER_CACHE_KEY = 'master:all'
 
 type MasterKey = 'departments' | 'locations' | 'vendors' | 'categories'
 const VALID_KEYS: MasterKey[] = ['departments', 'locations', 'vendors', 'categories']
@@ -16,26 +19,25 @@ const DEFAULT_DATA: Record<MasterKey, string[]> = {
   vendors:     ['삼성전자 서비스', 'LG전자 서비스', 'Dell 코리아', '현대자동차'],
 }
 
-// GET /api/master — 인증된 사용자만 조회 가능, 5분 캐싱
+// GET /api/master — 인증된 사용자만 조회 가능, 1시간 Redis 캐싱
 export async function GET(request: NextRequest) {
   const authError = await requireRoles(request, ['ADMIN', 'MANAGER', 'STAFF'])
   if (authError) return authError
   try {
-    const items = await prisma.masterItem.findMany({ orderBy: { value: 'asc' } })
-
-    // type별로 그룹핑
-    const grouped = items.reduce<Record<string, string[]>>((acc, item) => {
-      if (!acc[item.type]) acc[item.type] = []
-      acc[item.type].push(item.value)
-      return acc
-    }, {})
-
-    const data = {
-      categories:  grouped.categories  ?? DEFAULT_DATA.categories,
-      departments: grouped.departments ?? DEFAULT_DATA.departments,
-      locations:   grouped.locations   ?? DEFAULT_DATA.locations,
-      vendors:     grouped.vendors     ?? DEFAULT_DATA.vendors,
-    }
+    const data = await withCache(MASTER_CACHE_KEY, 3600, async () => {
+      const items = await prisma.masterItem.findMany({ orderBy: { value: 'asc' } })
+      const grouped = items.reduce<Record<string, string[]>>((acc, item) => {
+        if (!acc[item.type]) acc[item.type] = []
+        acc[item.type].push(item.value)
+        return acc
+      }, {})
+      return {
+        categories:  grouped.categories  ?? DEFAULT_DATA.categories,
+        departments: grouped.departments ?? DEFAULT_DATA.departments,
+        locations:   grouped.locations   ?? DEFAULT_DATA.locations,
+        vendors:     grouped.vendors     ?? DEFAULT_DATA.vendors,
+      }
+    })
 
     const res = ok(data)
     res.headers.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
     await prisma.masterItem.create({
       data: { type: type as MasterKey, value: value.trim() },
     })
+    await invalidateCache([MASTER_CACHE_KEY])
 
     // 갱신된 전체 목록 반환
     return GET(request)
@@ -87,6 +90,7 @@ export async function DELETE(request: NextRequest) {
     await prisma.masterItem.deleteMany({
       where: { type: type as MasterKey, value },
     })
+    await invalidateCache([MASTER_CACHE_KEY])
 
     return GET(request)
   } catch (error) {
