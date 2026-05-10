@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { BarChart3, Building2, CalendarDays, Download, Printer, Lock, FileSpreadsheet, UserCheck, RefreshCcw } from 'lucide-react'
 import { useUser } from '@/context/user-context'
-import { ASSET_CATEGORY_LABEL, ASSET_STATUS_LABEL, formatCurrency } from '@/lib/utils'
+import { ASSET_CATEGORY_LABEL, formatCurrency } from '@/lib/utils'
 import { calculateDepreciation } from '@/lib/depreciation'
 import { Skeleton } from '@/components/ui'
 
