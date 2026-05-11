@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCcw, Wrench, History, Info, CheckCircle, Pencil, X, ShieldAlert, QrCode, FileText, CalendarClock } from 'lucide-react'
+import { RefreshCcw, Wrench, History, Info, CheckCircle, Pencil, X, ShieldAlert, QrCode, FileText, CalendarClock, UserCheck, CornerDownLeft, ArrowRight, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
 import { ASSET_CATEGORY_LABEL, ASSET_STATUS_LABEL, formatCurrency, getWarrantyStatus, getActiveLabel } from '@/lib/utils'
@@ -38,6 +38,28 @@ const STATUS_OPTIONS = [
 const HISTORY_TYPE_LABEL: Record<string, string> = {
   ASSIGNED: '배정', RETURNED: '반납', TRANSFERRED: '이관',
   MAINTAINED: '수리', DISPOSED: '폐기', STATUS_CHANGED: '상태변경',
+}
+
+const HISTORY_TYPE_CONFIG: Record<string, { icon: React.ReactNode; dot: string; badge: string }> = {
+  ASSIGNED:       { icon: <UserCheck      className="w-3 h-3" />, dot: 'bg-blue-500',    badge: 'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700' },
+  RETURNED:       { icon: <CornerDownLeft  className="w-3 h-3" />, dot: 'bg-slate-400',   badge: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600' },
+  TRANSFERRED:    { icon: <ArrowRight     className="w-3 h-3" />, dot: 'bg-violet-500',  badge: 'bg-violet-50 text-violet-700 border-violet-100 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-700' },
+  MAINTAINED:     { icon: <Wrench         className="w-3 h-3" />, dot: 'bg-amber-500',   badge: 'bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700' },
+  DISPOSED:       { icon: <Trash2         className="w-3 h-3" />, dot: 'bg-red-500',     badge: 'bg-red-50 text-red-700 border-red-100 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700' },
+  STATUS_CHANGED: { icon: <RefreshCcw     className="w-3 h-3" />, dot: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700' },
+}
+const DEFAULT_HISTORY_CONFIG = { icon: <Info className="w-3 h-3" />, dot: 'bg-blue-500', badge: 'bg-blue-50 text-blue-600 border-blue-100' }
+
+function historyTimeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const min  = Math.floor(diff / 60000)
+  if (min < 1)  return '방금 전'
+  if (min < 60) return `${min}분 전`
+  const hr = Math.floor(min / 60)
+  if (hr < 24)  return `${hr}시간 전`
+  const day = Math.floor(hr / 24)
+  if (day < 7)  return `${day}일 전`
+  return new Date(iso).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
 }
 
 const TODAY = new Date().toISOString().split('T')[0]
@@ -88,6 +110,10 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
   // ── 상태변경 ─────────────────────────────────────────────────────────────────
   const [newStatus,     setNewStatus]     = useState('')
   const [statusLoading, setStatusLoading] = useState(false)
+
+  // ── 이력 탭 ──────────────────────────────────────────────────────────────────
+  const [historyShowAll, setHistoryShowAll] = useState(false)
+  const HISTORY_SHOW_DEFAULT = 10
 
   const fetchAsset = useCallback(() => {
     setLoading(true)
@@ -442,26 +468,73 @@ export default function AssetDetailModal({ assetId, onClose, onUpdated }: AssetD
             {tab === 'history' && (
               <div>
                 {asset.historyLogs.length === 0 ? (
-                  <p className="text-center text-slate-400 py-16">이력이 없습니다.</p>
-                ) : (
-                  <div className="relative pl-5 space-y-0">
-                    <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-slate-200 dark:bg-slate-600" />
-                    {asset.historyLogs.map((log) => (
-                      <div key={log.id} className="relative pb-5">
-                        <div className="absolute -left-3 top-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white dark:border-slate-800 shadow" />
-                        <div className="bg-slate-50 dark:bg-slate-700/50 border border-slate-100 dark:border-slate-600 rounded-xl p-3 ml-3">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-0.5 rounded-md border border-blue-100 dark:border-blue-700">
-                              {HISTORY_TYPE_LABEL[log.type] ?? log.type}
-                            </span>
-                            <span className="text-xs text-slate-400 font-mono">{log.date?.split('T')[0]}</span>
-                          </div>
-                          <p className="text-sm text-slate-700 dark:text-slate-200">{log.detail}</p>
-                          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">처리자: {log.user?.name ?? '-'}</p>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="flex flex-col items-center justify-center py-16 gap-2 text-slate-400">
+                    <History className="w-8 h-8 opacity-30" />
+                    <p className="text-sm">이력이 없습니다.</p>
                   </div>
+                ) : (
+                  <>
+                    {/* 건수 요약 */}
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">
+                      총 {asset.historyLogs.length}건
+                      {!historyShowAll && asset.historyLogs.length > HISTORY_SHOW_DEFAULT && ` · 최신 ${HISTORY_SHOW_DEFAULT}건 표시`}
+                    </p>
+
+                    <div className="relative pl-7">
+                      {/* 세로 그라데이션 선 */}
+                      <div className="absolute left-3 top-3 bottom-3 w-0.5 bg-gradient-to-b from-slate-300 via-slate-200 to-transparent dark:from-slate-600 dark:via-slate-700" />
+
+                      {(historyShowAll ? asset.historyLogs : asset.historyLogs.slice(0, HISTORY_SHOW_DEFAULT)).map((log, idx) => {
+                        const cfg = HISTORY_TYPE_CONFIG[log.type] ?? DEFAULT_HISTORY_CONFIG
+                        return (
+                          <div key={log.id} className={`relative ${idx > 0 ? 'pt-4' : ''} pb-1 last:pb-0`}>
+                            {/* 타입별 색상 아이콘 dot */}
+                            <div className={`absolute -left-4 top-${idx > 0 ? '4' : '0'} w-6 h-6 rounded-full ${cfg.dot} flex items-center justify-center text-white shadow-sm ring-2 ring-white dark:ring-slate-800`}>
+                              {cfg.icon}
+                            </div>
+
+                            <div className="bg-white dark:bg-slate-700/60 border border-slate-100 dark:border-slate-600 rounded-xl p-3.5 shadow-sm">
+                              {/* 상단: 타입 배지 + 시간 */}
+                              <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-md border ${cfg.badge}`}>
+                                  {HISTORY_TYPE_LABEL[log.type] ?? log.type}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-slate-400 dark:text-slate-500">
+                                    {historyTimeAgo(log.date)}
+                                  </span>
+                                  <span className="text-[10px] text-slate-300 dark:text-slate-600 font-mono hidden sm:inline">
+                                    {log.date?.split('T')[0]}
+                                  </span>
+                                </div>
+                              </div>
+                              {/* 내용 */}
+                              <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">{log.detail}</p>
+                              {/* 처리자 */}
+                              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1">
+                                <span className="inline-block w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
+                                처리자: {log.user?.name ?? '-'}
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* 더보기 / 접기 */}
+                    {asset.historyLogs.length > HISTORY_SHOW_DEFAULT && (
+                      <div className="mt-5 text-center">
+                        <button
+                          onClick={() => setHistoryShowAll((p) => !p)}
+                          className="text-xs font-semibold text-blue-500 hover:text-blue-700 dark:hover:text-blue-300 transition-colors px-5 py-2 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-blue-100 dark:border-blue-800"
+                        >
+                          {historyShowAll
+                            ? `최신 ${HISTORY_SHOW_DEFAULT}건만 보기 ↑`
+                            : `전체 ${asset.historyLogs.length}건 보기 ↓`}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}

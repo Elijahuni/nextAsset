@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import {
   Search, Upload, Download, FileSignature, PlusCircle,
   Printer, Filter, ChevronLeft, ChevronRight, Image as ImageIcon, QrCode,
-  SlidersHorizontal, X,
+  SlidersHorizontal, X, CheckSquare, RefreshCcw,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
@@ -63,6 +63,10 @@ export default function AssetLedger() {
   const [detailAssetId, setDetailAssetId]   = useState<string | null>(null)
   const [isDraftOpen, setIsDraftOpen]       = useState(false)
   const [isQrOpen,    setIsQrOpen]          = useState(false)
+
+  // ── 일괄 상태 변경 ───────────────────────────────────────────────────────────
+  const [bulkStatus,   setBulkStatus]   = useState('AVAILABLE')
+  const [bulkChanging, setBulkChanging] = useState(false)
 
   // ── 검색 debounce (400ms) ────────────────────────────────────────────────────
   useEffect(() => {
@@ -194,6 +198,27 @@ export default function AssetLedger() {
       toast.error('다운로드에 실패했습니다.')
     } finally {
       setXlsxLoading(false)
+    }
+  }
+
+  const handleBulkStatusChange = async () => {
+    if (selectedIds.length === 0 || !bulkStatus) return
+    setBulkChanging(true)
+    try {
+      const res = await fetch('/api/assets/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds, status: bulkStatus }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast.error(data.error ?? '상태 변경에 실패했습니다.'); return }
+      toast.success(`${data.updated}건의 상태가 변경되었습니다.`)
+      setSelectedIds([])
+      fetchAssets(page)
+    } catch {
+      toast.error('서버 오류가 발생했습니다.')
+    } finally {
+      setBulkChanging(false)
     }
   }
 
@@ -660,6 +685,44 @@ export default function AssetLedger() {
         onClose={() => setIsAdvFilterOpen(false)}
         activeCount={advActiveCount}
       />
+
+      {/* ── 일괄 상태 변경 플로팅 액션바 ───────────────────────────────────────── */}
+      {selectedIds.length > 0 && canManageAssets && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-slate-900 text-white rounded-2xl shadow-2xl px-5 py-3 border border-slate-700">
+          <CheckSquare className="w-4 h-4 text-blue-400 shrink-0" />
+          <span className="text-sm font-semibold text-slate-200 whitespace-nowrap">
+            {selectedIds.length}건 선택됨
+          </span>
+          <div className="w-px h-5 bg-slate-700" />
+          <select
+            value={bulkStatus}
+            onChange={(e) => setBulkStatus(e.target.value)}
+            className="bg-slate-800 border border-slate-600 text-sm text-white rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+          >
+            <option value="AVAILABLE">사용가능</option>
+            <option value="IN_USE">사용중</option>
+            <option value="UNDER_MAINTENANCE">수리중</option>
+            <option value="RETIRED">보관중</option>
+            <option value="DISPOSED">처분</option>
+          </select>
+          <button
+            onClick={handleBulkStatusChange}
+            disabled={bulkChanging}
+            className="flex items-center px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {bulkChanging
+              ? <><RefreshCcw className="w-3.5 h-3.5 mr-1.5 animate-spin" />변경 중...</>
+              : '일괄 변경'}
+          </button>
+          <button
+            onClick={() => setSelectedIds([])}
+            className="p-1.5 text-slate-400 hover:text-white transition-colors"
+            title="선택 해제"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }
