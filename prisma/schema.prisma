@@ -86,14 +86,14 @@ model User {
 
 model Notification {
   id        String    @id @default(cuid())
-  userId    String
+  userId    String    @map("user_id")
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      String    // 'APPROVAL_REQUEST' | 'APPROVAL_APPROVED' | 'APPROVAL_REJECTED' | 'APPROVAL_CANCELLED' | 'WARRANTY_EXPIRING'
+  type      String
   title     String
   body      String
-  link      String?   // 클릭 시 이동할 경로 (예: /approvals)
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
+  link      String?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, readAt])
@@ -180,15 +180,15 @@ model Approval {
 
 model ApprovalStep {
   id         String    @id @default(cuid())
-  approvalId String
+  approvalId String    @map("approval_id")
   approval   Approval  @relation(fields: [approvalId], references: [id], onDelete: Cascade)
   order      Int
-  approverId String
+  approverId String    @map("approver_id")
   approver   User      @relation("StepApprover", fields: [approverId], references: [id])
-  status     String    @default("WAITING") // WAITING | PENDING | APPROVED | REJECTED
-  actedAt    DateTime?
+  status     String    @default("WAITING")
+  actedAt    DateTime? @map("acted_at")
   comment    String?   @db.Text
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   @@unique([approvalId, order])
   @@index([approvalId])
@@ -243,14 +243,14 @@ model MaintenanceLog {
 }
 
 model AssetAudit {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
-  startDate DateTime
-  endDate   DateTime?
-  status    String   @default("ACTIVE") // 'ACTIVE' | 'COMPLETED'
-  createdBy String   // 실사 담당자 이름
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  startDate DateTime  @map("start_date")
+  endDate   DateTime? @map("end_date")
+  status    String    @default("ACTIVE")
+  createdBy String    @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   items AssetAuditItem[]
 
@@ -261,11 +261,11 @@ model AssetAudit {
 
 model AssetAuditItem {
   id        String          @id @default(cuid())
-  auditId   String
-  assetId   String
+  auditId   String          @map("audit_id")
+  assetId   String          @map("asset_id")
   result    AuditItemResult @default(PENDING)
-  auditedBy String?         // 처리자 이름
-  auditedAt DateTime?
+  auditedBy String?         @map("audited_by")
+  auditedAt DateTime?       @map("audited_at")
   note      String?
 
   audit AssetAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
@@ -279,14 +279,14 @@ model AssetAuditItem {
 
 model MaintenanceSchedule {
   id           String    @id @default(cuid())
-  assetId      String
+  assetId      String    @map("asset_id")
   asset        Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  description  String    // 점검 내용 설명
-  intervalDays Int       // 점검 주기 (일)
-  lastDoneAt   DateTime? // 마지막 완료일
-  nextDueAt    DateTime  // 다음 점검 예정일
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  description  String
+  intervalDays Int       @map("interval_days")
+  lastDoneAt   DateTime? @map("last_done_at")
+  nextDueAt    DateTime  @map("next_due_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@index([assetId])
   @@index([nextDueAt])
