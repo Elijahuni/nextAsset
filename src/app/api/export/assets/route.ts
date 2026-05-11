@@ -97,13 +97,18 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = request.nextUrl
-    const q           = searchParams.get('q')?.trim() ?? ''
-    const rawStatus   = searchParams.get('status')
-    const rawCategory = searchParams.get('category')
-    const department  = searchParams.get('department') ?? undefined
-    const activeGroup = searchParams.get('active')
+    const q                  = searchParams.get('q')?.trim() ?? ''
+    const rawStatus          = searchParams.get('status')
+    const rawCategory        = searchParams.get('category')
+    const department         = searchParams.get('department') ?? undefined
+    const activeGroup        = searchParams.get('active')
+    const dateFrom           = searchParams.get('dateFrom')
+    const dateTo             = searchParams.get('dateTo')
+    const priceMin           = searchParams.get('priceMin')
+    const priceMax           = searchParams.get('priceMax')
+    const warrantyExpiring   = searchParams.get('warranty') === '1'
 
-    const status   = rawStatus   && VALID_STATUSES.has(rawStatus as AssetStatus)     ? rawStatus as AssetStatus     : null
+    const status   = rawStatus   && VALID_STATUSES.has(rawStatus as AssetStatus)       ? rawStatus as AssetStatus     : null
     const category = rawCategory && VALID_CATEGORIES.has(rawCategory as AssetCategory) ? rawCategory as AssetCategory : null
 
     // active 그룹 → enum 목록
@@ -112,6 +117,10 @@ export async function GET(request: NextRequest) {
     const activeEnums =
       activeGroup === 'active'   ? ACTIVE_STATUSES :
       activeGroup === 'inactive' ? INACTIVE_STATUSES : []
+
+    // 보증만료 임박: 오늘~30일 이내
+    const warrantyFrom = warrantyExpiring ? new Date() : undefined
+    const warrantyTo   = warrantyExpiring ? (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d })() : undefined
 
     const where = {
       deletedAt: null,
@@ -131,6 +140,24 @@ export async function GET(request: NextRequest) {
         ? { status }
         : activeEnums.length ? { status: { in: activeEnums } } : {}),
       ...(category && { category }),
+      // 취득일 범위
+      ...(dateFrom || dateTo ? {
+        acquiredDate: {
+          ...(dateFrom && { gte: new Date(dateFrom) }),
+          ...(dateTo   && { lte: new Date(dateTo + 'T23:59:59') }),
+        },
+      } : {}),
+      // 가격 범위
+      ...(priceMin || priceMax ? {
+        price: {
+          ...(priceMin && { gte: Number(priceMin) }),
+          ...(priceMax && { lte: Number(priceMax) }),
+        },
+      } : {}),
+      // 보증만료 임박
+      ...(warrantyExpiring && warrantyFrom && warrantyTo ? {
+        warrantyDate: { gte: warrantyFrom, lte: warrantyTo },
+      } : {}),
     }
 
     // 자산 + 유지보수이력 한 번에 조회
@@ -291,19 +318,17 @@ export async function GET(request: NextRequest) {
       CreatedDate: new Date(),
     }
 
-    // ArrayBuffer로 직렬화 후 Blob으로 감싸 Response 반환 (Vercel Edge 호환)
-    const xlsxArray = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as number[]
-    const blob2     = new Blob([new Uint8Array(xlsxArray)], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    })
+    // Uint8Array로 직렬화 — Vercel 서버리스에서 BodyInit 호환 + 실제 바이트 수로 Content-Length 계산
+    // (이전 방식의 xlsxArray.length는 number[] 원소 수여서 바이트 크기와 다름)
+    const xlsxBytes = new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as number[])
 
     const filename = encodeURIComponent(`자산보고서_${dateStr}.xlsx`)
-    return new Response(blob2, {
+    return new Response(xlsxBytes, {
       status: 200,
       headers: {
         'Content-Type':        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename*=UTF-8''${filename}`,
-        'Content-Length':      String(xlsxArray.length),
+        'Content-Length':      String(xlsxBytes.byteLength),
         'Cache-Control':       'no-store',
       },
     })
