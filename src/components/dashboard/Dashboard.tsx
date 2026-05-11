@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Database, Monitor, FileSignature, Briefcase,
-  PieChart, BarChart3, Sparkles, Bot, RefreshCcw,
+  PieChart, BarChart3, Sparkles, Bot, RefreshCcw, CalendarClock,
 } from 'lucide-react'
 
 // ─── CountUp 훅 ───────────────────────────────────────────────────────────────
@@ -86,6 +86,7 @@ function DashboardSkeleton() {
 import { useUser } from '@/context/user-context'
 import { CATEGORY_COLORS, formatCurrency } from '@/lib/utils'
 import { Skeleton } from '@/components/ui'
+import StatsCharts from './StatsCharts'
 
 // ─── API 응답 타입 ────────────────────────────────────────────────────────────
 
@@ -110,8 +111,9 @@ export default function Dashboard() {
   const [loading, setLoading]   = useState(true)
   const [aiReport, setAiReport] = useState('')
   const [isAiLoading, setIsAiLoading] = useState(false)
+  const [dueCount, setDueCount] = useState<number | null>(null)
 
-  // ─── 데이터 패칭 — /api/stats 단일 호출 ────────────────────────────────────
+  // ─── 데이터 패칭 ────────────────────────────────────────────────────────────
 
   useEffect(() => {
     setLoading(true)
@@ -120,6 +122,13 @@ export default function Dashboard() {
       .then((data: StatsResponse) => setStats(data))
       .catch(() => {})
       .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/maintenance/due')
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.data?.count != null) setDueCount(d.data.count) })
+      .catch(() => {})
   }, [])
 
   // ─── CountUp 애니메이션 ──────────────────────────────────────────────────────
@@ -244,6 +253,26 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* 이번 달 정기점검 예정 카드 */}
+      {dueCount !== null && dueCount > 0 && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-4 flex items-center gap-4 print:hidden">
+          <div className="p-3 bg-blue-100 dark:bg-blue-800/50 rounded-xl shrink-0">
+            <CalendarClock className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-blue-900 dark:text-blue-200">
+              이번 달 정기점검 예정 <span className="text-blue-600 dark:text-blue-400">{dueCount}건</span>
+            </p>
+            <p className="text-xs text-blue-600/80 dark:text-blue-400/80 mt-0.5">
+              자산 상세 → 정기점검 탭에서 확인하세요
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* SVG 차트 섹션 */}
+      {!isEmployee && <StatsCharts />}
 
       {/* 카테고리·상태 차트 */}
       {totalCount > 0 && (

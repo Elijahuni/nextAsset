@@ -141,7 +141,7 @@ export default function ApprovalsView() {
 
       {/* ── 데스크탑 테이블 (lg 이상) ─────────────────────────────────────── */}
       <div className="hidden lg:block flex-1 overflow-auto custom-scrollbar">
-        <table className="w-full text-sm text-left text-slate-600 dark:text-slate-300">
+        <table className="w-full min-w-[700px] text-sm text-left text-slate-600 dark:text-slate-300">
           <thead className="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-900/50 sticky top-0 z-10">
             <tr>
               <th className="px-6 py-4 font-semibold">결재상태</th>

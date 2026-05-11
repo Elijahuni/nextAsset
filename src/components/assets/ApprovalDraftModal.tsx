@@ -20,7 +20,6 @@ interface UserOption {
 const schema = z.object({
   title:              z.string().min(1, '결재 제목을 입력해주세요.'),
   type:               z.string().min(1),
-  approverId:         z.string().optional(),
   reason:             z.string().optional(),
   targetDepartment:   z.string().optional(),
   targetLocation:     z.string().optional(),
@@ -80,6 +79,8 @@ export default function ApprovalDraftModal({ selectedAssets, onClose, onSuccess 
   const [aiLoading,    setAiLoading]    = useState(false)
   const [aiError,      setAiError]      = useState('')
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
+  // 다단계 결재선: 최대 3명 (빈 문자열 = 미선택)
+  const [approverIds, setApproverIds] = useState<[string, string, string]>(['', '', ''])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const {
@@ -93,12 +94,23 @@ export default function ApprovalDraftModal({ selectedAssets, onClose, onSuccess 
     defaultValues: {
       title:            '',
       type:             'PURCHASE',
-      approverId:       '',
       reason:           '',
       targetDepartment: '',
       targetLocation:   '',
     },
   })
+
+  const setApproverAt = (index: number, value: string) => {
+    setApproverIds((prev) => {
+      const next = [...prev] as [string, string, string]
+      next[index] = value
+      // 중간 슬롯이 비면 뒤 슬롯도 초기화
+      for (let i = index + 1; i < 3; i++) {
+        if (!next[i - 1]) next[i] = ''
+      }
+      return next
+    })
+  }
 
   const watchedType   = watch('type')
   const watchedReason = watch('reason')
@@ -222,6 +234,8 @@ export default function ApprovalDraftModal({ selectedAssets, onClose, onSuccess 
         reasonPayload = `__TRANSFER_META__${meta}__END__\n${reasonPayload}`
       }
 
+      const filledApproverIds = approverIds.filter(Boolean)
+
       const res = await fetch('/api/approvals', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -230,8 +244,8 @@ export default function ApprovalDraftModal({ selectedAssets, onClose, onSuccess 
           type:        data.type,
           applicantId: currentUser.id,
           assetIds:    selectedAssets.map((a) => a.id),
-          ...(reasonPayload   && { reason:     reasonPayload }),
-          ...(data.approverId && { approverId: data.approverId }),
+          ...(reasonPayload           && { reason:      reasonPayload }),
+          ...(filledApproverIds.length > 0 && { approverIds: filledApproverIds }),
         }),
       })
       const json = await res.json()
@@ -268,11 +282,11 @@ export default function ApprovalDraftModal({ selectedAssets, onClose, onSuccess 
       onClose={onClose}
       size="xl"
       footer={
-        <div className="p-6 flex justify-end gap-3">
+        <div className="px-4 py-4 sm:px-6 flex gap-2 sm:gap-3 justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 transition-colors"
+            className="flex-1 sm:flex-none px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 transition-colors text-center"
           >
             취소
           </button>
@@ -280,7 +294,7 @@ export default function ApprovalDraftModal({ selectedAssets, onClose, onSuccess 
             type="button"
             onClick={handleSubmit(onSubmit)}
             disabled={isSubmitting}
-            className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center transition-colors"
+            className="flex-1 sm:flex-none px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
           >
             {isSubmitting
               ? <><RefreshCcw className="w-4 h-4 mr-2 animate-spin" />기안 중...</>
@@ -290,7 +304,7 @@ export default function ApprovalDraftModal({ selectedAssets, onClose, onSuccess 
         </div>
       }
     >
-      <form className="p-6 space-y-4" onSubmit={handleSubmit(onSubmit)}>
+      <form className="p-4 sm:p-6 space-y-4" onSubmit={handleSubmit(onSubmit)}>
 
         {/* 대상 자산 */}
         <div>
@@ -326,35 +340,52 @@ export default function ApprovalDraftModal({ selectedAssets, onClose, onSuccess 
           {errors.title && <p className="mt-1 text-xs text-red-500">{errors.title.message}</p>}
         </div>
 
-        {/* 결재 유형 / 결재자 */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-              결재 유형 <span className="text-red-500">*</span>
-            </label>
-            <select
-              {...register('type')}
-              className={`${INPUT_CLS} border-slate-300 bg-white dark:bg-slate-700`}
-            >
-              {APPROVAL_TYPE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-              결재자
-            </label>
-            <select
-              {...register('approverId')}
-              className={`${INPUT_CLS} border-slate-300 bg-white dark:bg-slate-700`}
-            >
-              <option value="">결재자 선택 (선택사항)</option>
-              {approverOptions.map((u) => (
-                <option key={u.id} value={u.id}>{u.name} ({u.department})</option>
-              ))}
-            </select>
-          </div>
+        {/* 결재 유형 */}
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+            결재 유형 <span className="text-red-500">*</span>
+          </label>
+          <select
+            {...register('type')}
+            className={`${INPUT_CLS} border-slate-300 bg-white dark:bg-slate-700`}
+          >
+            {APPROVAL_TYPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* 다단계 결재선 (최대 3명) */}
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            결재선 <span className="font-normal text-slate-400">(최대 3단계, 순서대로 결재)</span>
+          </p>
+          {([0, 1, 2] as const).map((idx) => {
+            const isDisabled = idx > 0 && !approverIds[idx - 1]
+            // 이미 앞 슬롯에서 선택된 ID는 제외
+            const usedIds = new Set(approverIds.slice(0, idx).filter(Boolean))
+            return (
+              <div key={idx} className="flex items-center gap-2">
+                <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-bold dark:bg-blue-900/40 dark:text-blue-300">
+                  {idx + 1}
+                </span>
+                <select
+                  value={approverIds[idx]}
+                  onChange={(e) => setApproverAt(idx, e.target.value)}
+                  disabled={isDisabled}
+                  className={`${INPUT_CLS} border-slate-300 bg-white dark:bg-slate-700 ${isDisabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                >
+                  <option value="">{idx === 0 ? '1순위 결재자 선택 (선택사항)' : `${idx + 1}순위 결재자 추가`}</option>
+                  {approverOptions
+                    .filter((u) => !usedIds.has(u.id))
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>{u.name} ({u.department})</option>
+                    ))
+                  }
+                </select>
+              </div>
+            )
+          })}
         </div>
 
         {/* TRANSFER 전용: 이관 목적지 */}

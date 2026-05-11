@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { BarChart3, Building2, CalendarDays, Download, Printer, Lock, FileSpreadsheet, UserCheck } from 'lucide-react'
+import { BarChart3, Building2, CalendarDays, Download, Printer, Lock, FileSpreadsheet, UserCheck, RefreshCcw } from 'lucide-react'
 import { useUser } from '@/context/user-context'
-import { ASSET_CATEGORY_LABEL, ASSET_STATUS_LABEL, formatCurrency } from '@/lib/utils'
+import { ASSET_CATEGORY_LABEL, formatCurrency } from '@/lib/utils'
 import { calculateDepreciation } from '@/lib/depreciation'
 import { Skeleton } from '@/components/ui'
 
@@ -30,9 +30,10 @@ type TabKey = 'dept' | 'year' | 'assignee'
 
 export default function ReportsView() {
   const { isEmployee, canManageSystem } = useUser()
-  const [assets,  setAssets]  = useState<RawAsset[]>([])
-  const [loading, setLoading] = useState(true)
-  const [tab,     setTab]     = useState<TabKey>('dept')
+  const [assets,      setAssets]      = useState<RawAsset[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [tab,         setTab]         = useState<TabKey>('dept')
+  const [xlsxLoading, setXlsxLoading] = useState(false)
 
   useEffect(() => {
     fetch('/api/assets')
@@ -67,10 +68,27 @@ export default function ReportsView() {
         <div className="flex items-center gap-2">
           {canManageSystem && (
             <button
-              onClick={() => handleDetailExcel(assets)}
-              className="flex items-center px-3 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-700"
+              onClick={async () => {
+                setXlsxLoading(true)
+                try {
+                  const res = await fetch('/api/export/assets')
+                  if (!res.ok) { alert('Excel 생성에 실패했습니다.'); return }
+                  const blob    = await res.blob()
+                  const url     = URL.createObjectURL(blob)
+                  const dateStr = new Date().toISOString().split('T')[0]
+                  const a = document.createElement('a')
+                  a.href = url; a.download = `자산보고서_${dateStr}.xlsx`; a.click()
+                  URL.revokeObjectURL(url)
+                } catch { alert('다운로드에 실패했습니다.') }
+                finally { setXlsxLoading(false) }
+              }}
+              disabled={xlsxLoading}
+              className="flex items-center px-3 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-700"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" /> 상세 엑셀 다운
+              {xlsxLoading
+                ? <RefreshCcw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                : <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" />}
+              {xlsxLoading ? '생성 중...' : 'Excel 다운 (3시트)'}
             </button>
           )}
           <button
@@ -123,45 +141,7 @@ export default function ReportsView() {
   )
 }
 
-// ── 상세 엑셀 다운로드 (감가상각 포함) ─────────────────────────────────────────
-function handleDetailExcel(assets: RawAsset[]) {
-  const header = [
-    '자산코드', '자산명', '분류', '중분류', '세부정보', '사이즈', '색상',
-    '담당자', '부서', '위치', '상태', '취득가액', '취득일',
-    '누적상각액', '장부가액', '상각률(%)',
-    '시리얼번호', '비고',
-  ]
-  const rows = assets.map((a) => {
-    const price = Number(a.price)
-    const { accumulated, bookValue } = calculateDepreciation(a.acquiredDate, price, a.category)
-    const rate = price > 0 ? Math.round((accumulated / price) * 100) : 0
-    return [
-      a.code, a.name,
-      ASSET_CATEGORY_LABEL[a.category] ?? a.category,
-      a.subCategory ?? '',
-      a.description ?? '',
-      a.size ?? '',
-      a.color ?? '',
-      a.assignedTo ?? '',
-      a.department,
-      a.location,
-      ASSET_STATUS_LABEL[a.status] ?? a.status,
-      price.toLocaleString(),
-      a.acquiredDate?.split('T')[0] ?? '',
-      accumulated.toLocaleString(),
-      bookValue.toLocaleString(),
-      String(rate),
-      a.barcode ?? '',
-      a.remarks ?? '',
-    ]
-  })
-  const csv  = [header, ...rows].map((r) => r.map((v) => `"${v}"`).join(',')).join('\n')
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href = url; a.download = `자산상세보고서_${new Date().toISOString().split('T')[0]}.csv`; a.click()
-  URL.revokeObjectURL(url)
-}
+// (구 handleDetailExcel → /api/export/assets API로 대체됨)
 
 // ── 부서별 자산현황 ─────────────────────────────────────────────────────────────
 function DeptReport({ assets, canSeePrice }: { assets: RawAsset[]; canSeePrice: boolean }) {

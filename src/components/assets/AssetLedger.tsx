@@ -1,20 +1,25 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import {
   Search, Upload, Download, FileSignature, PlusCircle,
   Printer, Filter, ChevronLeft, ChevronRight, Image as ImageIcon, QrCode,
+  SlidersHorizontal, X, CheckSquare, RefreshCcw,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useUser } from '@/context/user-context'
 import { ASSET_STATUS_LABEL, ASSET_CATEGORY_LABEL, formatCurrency, getActiveLabel } from '@/lib/utils'
 import { Skeleton, Badge, EmptyTableRow } from '@/components/ui'
-import BulkUploadModal from './BulkUploadModal'
-import AssetCreateModal from './AssetCreateModal'
-import AssetDetailModal from './AssetDetailModal'
-import ApprovalDraftModal from './ApprovalDraftModal'
-import QrTagModal from './QrTagModal'
+import AdvancedFilterPanel, { AdvancedFilters, ADVANCED_FILTER_DEFAULTS } from './AdvancedFilterPanel'
 import type { ApiAsset, PaginatedAssets } from '@/types'
+
+// 무거운 모달은 lazy load — 초기 번들에서 제외
+const BulkUploadModal    = dynamic(() => import('./BulkUploadModal'))
+const AssetCreateModal   = dynamic(() => import('./AssetCreateModal'))
+const AssetDetailModal   = dynamic(() => import('./AssetDetailModal'))
+const ApprovalDraftModal = dynamic(() => import('./ApprovalDraftModal'))
+const QrTagModal         = dynamic(() => import('./QrTagModal'))
 
 const LIMIT = 50
 
@@ -48,6 +53,10 @@ export default function AssetLedger() {
   const [filterCategory, setFilterCategory]   = useState('')
   const [filterDept, setFilterDept]           = useState('')
 
+  // ── 고급 필터 상태 ───────────────────────────────────────────────────────────
+  const [advFilters,      setAdvFilters]      = useState<AdvancedFilters>(ADVANCED_FILTER_DEFAULTS)
+  const [isAdvFilterOpen, setIsAdvFilterOpen] = useState(false)
+
   // ── 모달 상태 ────────────────────────────────────────────────────────────────
   const [isUploadOpen, setIsUploadOpen]     = useState(false)
   const [isCreateOpen, setIsCreateOpen]     = useState(false)
@@ -55,11 +64,48 @@ export default function AssetLedger() {
   const [isDraftOpen, setIsDraftOpen]       = useState(false)
   const [isQrOpen,    setIsQrOpen]          = useState(false)
 
+  // ── 일괄 상태 변경 ───────────────────────────────────────────────────────────
+  const [bulkStatus,   setBulkStatus]   = useState('AVAILABLE')
+  const [bulkChanging, setBulkChanging] = useState(false)
+
   // ── 검색 debounce (400ms) ────────────────────────────────────────────────────
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 400)
     return () => clearTimeout(t)
   }, [searchQuery])
+
+  // ── URL에서 초기 필터 복원 (마운트 1회) ─────────────────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const q = params.get('q') ?? ''
+    if (q) setSearchQuery(q)
+    const adv: AdvancedFilters = {
+      dateFrom:             params.get('dateFrom') ?? '',
+      dateTo:               params.get('dateTo')   ?? '',
+      priceMin:             params.get('priceMin') ?? '',
+      priceMax:             params.get('priceMax') ?? '',
+      warrantyExpiringSoon: params.get('warranty') === '1',
+    }
+    if (Object.values(adv).some(Boolean)) setAdvFilters(adv)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── 필터 → URL 동기화 ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (debouncedSearch)              params.set('q',          debouncedSearch)
+    if (filterStatus)                 params.set('status',     filterStatus)
+    else if (filterActive)            params.set('active',     filterActive)
+    if (filterCategory)               params.set('category',   filterCategory)
+    if (filterDept)                   params.set('department', filterDept)
+    if (advFilters.dateFrom)          params.set('dateFrom',   advFilters.dateFrom)
+    if (advFilters.dateTo)            params.set('dateTo',     advFilters.dateTo)
+    if (advFilters.priceMin)          params.set('priceMin',   advFilters.priceMin)
+    if (advFilters.priceMax)          params.set('priceMax',   advFilters.priceMax)
+    if (advFilters.warrantyExpiringSoon) params.set('warranty', '1')
+    const qs = params.toString()
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname)
+  }, [debouncedSearch, filterStatus, filterActive, filterCategory, filterDept, advFilters])
 
   // ── 쿼리 파라미터 빌더 ───────────────────────────────────────────────────────
   const buildParams = useCallback((pageNum: number, overrideLimit?: number) => {
@@ -72,10 +118,16 @@ export default function AssetLedger() {
     // manager: 서버에서 본인 부서만 반환
     const dept = currentUser.role === 'manager' ? currentUser.department : filterDept
     if (dept) params.set('department', dept)
+    // 고급 필터
+    if (advFilters.dateFrom)             params.set('dateFrom', advFilters.dateFrom)
+    if (advFilters.dateTo)               params.set('dateTo',   advFilters.dateTo)
+    if (advFilters.priceMin)             params.set('priceMin', advFilters.priceMin)
+    if (advFilters.priceMax)             params.set('priceMax', advFilters.priceMax)
+    if (advFilters.warrantyExpiringSoon) params.set('warranty', '1')
     params.set('page',  String(pageNum))
     params.set('limit', String(overrideLimit ?? LIMIT))
     return params
-  }, [debouncedSearch, filterStatus, filterActive, filterCategory, filterDept, currentUser])
+  }, [debouncedSearch, filterStatus, filterActive, filterCategory, filterDept, currentUser, advFilters])
 
   // ── 자산 목록 패치 ───────────────────────────────────────────────────────────
   const fetchAssets = useCallback((pageNum = 1) => {
@@ -112,34 +164,67 @@ export default function AssetLedger() {
   const toggleOne = (id: string) =>
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
 
-  // ── CSV 다운로드 (현재 필터 기준 전체) ───────────────────────────────────────
+  // ── Excel 다운로드 (현재 필터 그대로 export API에 전달) ───────────────────
+  const [xlsxLoading, setXlsxLoading] = useState(false)
   const handleDownload = async () => {
+    setXlsxLoading(true)
     try {
-      const res  = await fetch(`/api/assets?${buildParams(1, 9999)}`)
-      const json = await res.json() as PaginatedAssets
-      const list = json.data ?? []
-      const header = ['자산코드', '자산명', '품목', '부서', '위치', '상태', '취득가액', '취득일']
-      const rows = list.map((a) => [
-        a.code, a.name,
-        ASSET_CATEGORY_LABEL[a.category] ?? a.category,
-        a.department, a.location,
-        ASSET_STATUS_LABEL[a.status] ?? a.status,
-        Number(a.price).toLocaleString(),
-        a.acquiredDate?.split('T')[0] ?? '',
-      ])
-      const csv  = [header, ...rows].map((r) => r.join(',')).join('\n')
-      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
-      a.href = url; a.download = '자산원장.csv'; a.click()
+      const params = new URLSearchParams()
+      if (debouncedSearch)   params.set('q', debouncedSearch)
+      if (filterStatus)      params.set('status', filterStatus)
+      else if (filterActive) params.set('active', filterActive)
+      if (filterCategory)    params.set('category', filterCategory)
+      const dept = currentUser.role === 'manager' ? currentUser.department : filterDept
+      if (dept) params.set('department', dept)
+      if (advFilters.dateFrom)             params.set('dateFrom', advFilters.dateFrom)
+      if (advFilters.dateTo)               params.set('dateTo',   advFilters.dateTo)
+      if (advFilters.priceMin)             params.set('priceMin', advFilters.priceMin)
+      if (advFilters.priceMax)             params.set('priceMax', advFilters.priceMax)
+      if (advFilters.warrantyExpiringSoon) params.set('warranty', '1')
+
+      const res = await fetch(`/api/export/assets?${params}`)
+      if (!res.ok) { toast.error('Excel 생성에 실패했습니다.'); return }
+
+      const blob    = await res.blob()
+      const url     = URL.createObjectURL(blob)
+      const dateStr = new Date().toISOString().split('T')[0]
+      const anchor  = document.createElement('a')
+      anchor.href     = url
+      anchor.download = `자산보고서_${dateStr}.xlsx`
+      anchor.click()
       URL.revokeObjectURL(url)
+      toast.success('Excel 파일이 다운로드되었습니다.')
     } catch {
       toast.error('다운로드에 실패했습니다.')
+    } finally {
+      setXlsxLoading(false)
+    }
+  }
+
+  const handleBulkStatusChange = async () => {
+    if (selectedIds.length === 0 || !bulkStatus) return
+    setBulkChanging(true)
+    try {
+      const res = await fetch('/api/assets/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds, status: bulkStatus }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast.error(data.error ?? '상태 변경에 실패했습니다.'); return }
+      toast.success(`${data.updated}건의 상태가 변경되었습니다.`)
+      setSelectedIds([])
+      fetchAssets(page)
+    } catch {
+      toast.error('서버 오류가 발생했습니다.')
+    } finally {
+      setBulkChanging(false)
     }
   }
 
   const selectedAssets   = assets.filter((a) => selectedIds.includes(a.id))
-  const activeFilterCount = [filterStatus, filterActive, filterCategory, filterDept].filter(Boolean).length
+  const advActiveCount    = [advFilters.dateFrom, advFilters.dateTo, advFilters.priceMin, advFilters.priceMax].filter(Boolean).length + (advFilters.warrantyExpiringSoon ? 1 : 0)
+  const activeFilterCount = [filterStatus, filterActive, filterCategory, filterDept].filter(Boolean).length + advActiveCount
   const isManager         = currentUser.role === 'manager'
 
   // ── Skeleton 행 ─────────────────────────────────────────────────────────────
@@ -193,9 +278,11 @@ export default function AssetLedger() {
                 </button>
                 <button
                   onClick={handleDownload}
-                  className="flex items-center px-4 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-sm"
+                  disabled={xlsxLoading}
+                  className="flex items-center px-4 py-2.5 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
                 >
-                  <Download className="w-4 h-4 mr-2 text-slate-500" /> 엑셀 다운
+                  <Download className={`w-4 h-4 mr-2 ${xlsxLoading ? 'animate-pulse' : ''}`} />
+                  {xlsxLoading ? '생성 중...' : 'Excel 다운'}
                 </button>
               </>
             )}
@@ -265,15 +352,66 @@ export default function AssetLedger() {
               ))}
             </select>
           )}
+          {/* 고급 필터 버튼 */}
+          <button
+            onClick={() => setIsAdvFilterOpen(true)}
+            className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border transition-colors ${
+              advActiveCount > 0
+                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-700 hover:bg-blue-100'
+                : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600'
+            }`}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            고급 필터
+            {advActiveCount > 0 && (
+              <span className="text-[10px] font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded-full">{advActiveCount}</span>
+            )}
+          </button>
           {activeFilterCount > 0 && (
             <button
-              onClick={() => { setFilterStatus(''); setFilterActive(''); setFilterCategory(''); setFilterDept('') }}
+              onClick={() => { setFilterStatus(''); setFilterActive(''); setFilterCategory(''); setFilterDept(''); setAdvFilters(ADVANCED_FILTER_DEFAULTS) }}
               className="text-xs font-semibold text-red-500 hover:text-red-700 px-2 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
             >
               필터 초기화 ({activeFilterCount})
             </button>
           )}
         </div>
+
+        {/* 활성 고급 필터 태그 */}
+        {advActiveCount > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {advFilters.dateFrom && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-700 rounded-md px-2 py-0.5">
+                시작일: {advFilters.dateFrom}
+                <button onClick={() => setAdvFilters((f) => ({ ...f, dateFrom: '' }))} aria-label="시작일 필터 제거"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {advFilters.dateTo && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-700 rounded-md px-2 py-0.5">
+                종료일: {advFilters.dateTo}
+                <button onClick={() => setAdvFilters((f) => ({ ...f, dateTo: '' }))} aria-label="종료일 필터 제거"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {advFilters.priceMin && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-700 rounded-md px-2 py-0.5">
+                최소가: {Number(advFilters.priceMin).toLocaleString()}원
+                <button onClick={() => setAdvFilters((f) => ({ ...f, priceMin: '' }))} aria-label="최소가 필터 제거"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {advFilters.priceMax && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-700 rounded-md px-2 py-0.5">
+                최대가: {Number(advFilters.priceMax).toLocaleString()}원
+                <button onClick={() => setAdvFilters((f) => ({ ...f, priceMax: '' }))} aria-label="최대가 필터 제거"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {advFilters.warrantyExpiringSoon && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-700 rounded-md px-2 py-0.5">
+                보증 만료 임박
+                <button onClick={() => setAdvFilters((f) => ({ ...f, warrantyExpiringSoon: false }))} aria-label="보증만료 필터 제거"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── 모바일 카드 뷰 (lg 미만) ────────────────────────────────────────── */}
@@ -538,6 +676,52 @@ export default function AssetLedger() {
           assets={selectedAssets}
           onClose={() => setIsQrOpen(false)}
         />
+      )}
+      <AdvancedFilterPanel
+        open={isAdvFilterOpen}
+        filters={advFilters}
+        onChange={setAdvFilters}
+        onReset={() => setAdvFilters(ADVANCED_FILTER_DEFAULTS)}
+        onClose={() => setIsAdvFilterOpen(false)}
+        activeCount={advActiveCount}
+      />
+
+      {/* ── 일괄 상태 변경 플로팅 액션바 ───────────────────────────────────────── */}
+      {selectedIds.length > 0 && canManageAssets && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-slate-900 text-white rounded-2xl shadow-2xl px-5 py-3 border border-slate-700">
+          <CheckSquare className="w-4 h-4 text-blue-400 shrink-0" />
+          <span className="text-sm font-semibold text-slate-200 whitespace-nowrap">
+            {selectedIds.length}건 선택됨
+          </span>
+          <div className="w-px h-5 bg-slate-700" />
+          <select
+            value={bulkStatus}
+            onChange={(e) => setBulkStatus(e.target.value)}
+            className="bg-slate-800 border border-slate-600 text-sm text-white rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+          >
+            <option value="AVAILABLE">사용가능</option>
+            <option value="IN_USE">사용중</option>
+            <option value="UNDER_MAINTENANCE">수리중</option>
+            <option value="RETIRED">보관중</option>
+            <option value="DISPOSED">처분</option>
+          </select>
+          <button
+            onClick={handleBulkStatusChange}
+            disabled={bulkChanging}
+            className="flex items-center px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {bulkChanging
+              ? <><RefreshCcw className="w-3.5 h-3.5 mr-1.5 animate-spin" />변경 중...</>
+              : '일괄 변경'}
+          </button>
+          <button
+            onClick={() => setSelectedIds([])}
+            className="p-1.5 text-slate-400 hover:text-white transition-colors"
+            title="선택 해제"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       )}
     </div>
   )

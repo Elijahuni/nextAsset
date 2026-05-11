@@ -8,7 +8,7 @@
  */
 
 import 'dotenv/config'
-import { PrismaClient } from '../src/generated/prisma/client'
+import { PrismaClient } from '@prisma/client'
 import { createClient } from '@supabase/supabase-js'
 
 const prisma = new PrismaClient()

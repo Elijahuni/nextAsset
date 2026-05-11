@@ -5,18 +5,6 @@ const nextConfig = {
     allowedDevOrigins: ['172.30.1.45', '172.30.1.*'],
   }),
 
-  // Prisma 엔진 바이너리를 Vercel 배포 번들에 포함
-  // custom output(src/generated/prisma) 사용 시 Next.js가 자동 추적하지 못하므로 명시 필요
-  outputFileTracingIncludes: {
-    '/**': [
-      './src/generated/prisma/**/*',
-      './node_modules/.prisma/**/*',
-    ],
-  },
-
-  // Prisma Client를 서버 번들에서 외부 패키지로 처리 (엔진 로딩 경로 안정화)
-  serverExternalPackages: ['@prisma/client', 'prisma'],
-
   images: {
     remotePatterns: [
       {
@@ -25,6 +13,14 @@ const nextConfig = {
         pathname: '/storage/v1/object/public/**',
       },
     ],
+  },
+
+  experimental: {
+    // xlsx(SheetJS)는 Node.js 전용 대형 패키지 — Vercel 함수 번들링 시
+    // 정적 분석으로 누락되는 것을 방지하기 위해 외부 패키지로 명시
+    // Next.js 14: experimental.serverComponentsExternalPackages
+    // Next.js 15+: serverExternalPackages (top-level)
+    serverComponentsExternalPackages: ['xlsx'],
   },
 };
 

@@ -1,6 +1,5 @@
 generator client {
-  provider      = "prisma-client"
-  output        = "../src/generated/prisma"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
@@ -58,6 +57,13 @@ enum HistoryType {
   STATUS_CHANGED
 }
 
+enum AuditItemResult {
+  PENDING
+  CONFIRMED
+  MISSING
+  SURPLUS
+}
+
 // ─── Models ────────────────────────────────────────────────────────────────
 
 model User {
@@ -69,11 +75,29 @@ model User {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  assetsApplied  Approval[]   @relation("Applicant")
-  assetsApproved Approval[]   @relation("Approver")
+  assetsApplied  Approval[]     @relation("Applicant")
+  assetsApproved Approval[]     @relation("Approver")
   historyLogs    HistoryLog[]
+  notifications  Notification[]
+  approvalSteps  ApprovalStep[] @relation("StepApprover")
 
   @@map("users")
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, readAt])
+  @@map("notifications")
 }
 
 model Asset {
@@ -98,15 +122,22 @@ model Asset {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
-  approvals       ApprovalAsset[]
-  historyLogs     HistoryLog[]
-  maintenanceLogs MaintenanceLog[]
-  files           AssetFile[]
+  approvals            ApprovalAsset[]
+  historyLogs          HistoryLog[]
+  maintenanceLogs      MaintenanceLog[]
+  maintenanceSchedules MaintenanceSchedule[]
+  auditItems           AssetAuditItem[]
+  files                AssetFile[]
 
   @@index([department])
   @@index([status])
   @@index([category])
   @@index([createdAt])
+  @@index([deletedAt, department])       // 부서 필터 + 소프트삭제
+  @@index([deletedAt, status])           // 상태 필터 + 소프트삭제
+  @@index([deletedAt, category])         // 카테고리 필터 + 소프트삭제
+  @@index([deletedAt, acquiredDate])     // 취득일 범위 + 소프트삭제
+  @@index([deletedAt, price])            // 가격 범위 + 소프트삭제
   @@map("assets")
 }
 
@@ -135,15 +166,33 @@ model Approval {
   updatedAt   DateTime       @updatedAt
 
   applicant User            @relation("Applicant", fields: [applicantId], references: [id])
-  approver  User?           @relation("Approver", fields: [approverId], references: [id])
+  approver  User?           @relation("Approver",  fields: [approverId], references: [id])
   assets    ApprovalAsset[]
   files     ApprovalFile[]
+  steps     ApprovalStep[]
 
   @@index([applicantId])
   @@index([approverId])
   @@index([status])
   @@index([createdAt])
   @@map("approvals")
+}
+
+model ApprovalStep {
+  id         String    @id @default(cuid())
+  approvalId String    @map("approval_id")
+  approval   Approval  @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  order      Int
+  approverId String    @map("approver_id")
+  approver   User      @relation("StepApprover", fields: [approverId], references: [id])
+  status     String    @default("WAITING")
+  actedAt    DateTime? @map("acted_at")
+  comment    String?   @db.Text
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@unique([approvalId, order])
+  @@index([approvalId])
+  @@map("approval_steps")
 }
 
 model ApprovalFile {
@@ -191,6 +240,57 @@ model MaintenanceLog {
   @@index([assetId])
   @@index([date])
   @@map("maintenance_logs")
+}
+
+model AssetAudit {
+  id        String    @id @default(cuid())
+  name      String
+  startDate DateTime  @map("start_date")
+  endDate   DateTime? @map("end_date")
+  status    String    @default("ACTIVE")
+  createdBy String    @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  items AssetAuditItem[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("asset_audits")
+}
+
+model AssetAuditItem {
+  id        String          @id @default(cuid())
+  auditId   String          @map("audit_id")
+  assetId   String          @map("asset_id")
+  result    AuditItemResult @default(PENDING)
+  auditedBy String?         @map("audited_by")
+  auditedAt DateTime?       @map("audited_at")
+  note      String?
+
+  audit AssetAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  asset Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([auditId, assetId])
+  @@index([auditId])
+  @@index([assetId])
+  @@map("asset_audit_items")
+}
+
+model MaintenanceSchedule {
+  id           String    @id @default(cuid())
+  assetId      String    @map("asset_id")
+  asset        Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  description  String
+  intervalDays Int       @map("interval_days")
+  lastDoneAt   DateTime? @map("last_done_at")
+  nextDueAt    DateTime  @map("next_due_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([assetId])
+  @@index([nextDueAt])
+  @@map("maintenance_schedules")
 }
 
 model AssetFile {

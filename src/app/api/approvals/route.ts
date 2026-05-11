@@ -4,9 +4,10 @@ import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { badRequest, created, ok, serverError } from '@/lib/api-response'
-import { ApprovalStatus, ApprovalType } from '@/generated/prisma/enums'
-import type { Prisma } from '@/generated/prisma/client'
+import { ApprovalStatus, ApprovalType } from '@prisma/client'
+import type { Prisma } from '@prisma/client'
 import { getRequestUser } from '@/lib/rbac'
+import { createNotification } from '@/lib/notifications'
 
 const VALID_APPROVAL_STATUSES = new Set(Object.values(ApprovalStatus))
 const VALID_APPROVAL_TYPES    = new Set(Object.values(ApprovalType))
@@ -18,6 +19,8 @@ const CreateApprovalSchema = z.object({
   assetIds:    z.array(z.string()).optional(),
   reason:      z.string().optional(),
   approverId:  z.string().optional(),
+  // 다단계 결재선 (최대 3명) — 제공 시 approverId보다 우선
+  approverIds: z.array(z.string()).max(3).optional(),
 })
 
 // GET /api/approvals
@@ -42,20 +45,29 @@ export async function GET(request: NextRequest) {
     let where: Prisma.ApprovalWhereInput
 
     if (sessionUser.role === 'STAFF') {
-      // STAFF: 본인 기안만 조회 — applicantId 파라미터 무시
+      // STAFF: 본인 기안 + 본인이 결재자로 지정된 건 (approverId 또는 steps)
       where = {
-        applicantId: sessionUser.id,
-        ...(status && { status }),
-        ...(type && { type }),
+        AND: [
+          {
+            OR: [
+              { applicantId: sessionUser.id },
+              { approverId: sessionUser.id },
+              { steps: { some: { approverId: sessionUser.id } } },
+            ],
+          },
+          ...(status ? [{ status }] : []),
+          ...(type   ? [{ type }]   : []),
+        ],
       }
     } else if (sessionUser.role === 'MANAGER') {
-      // MANAGER: 본인 부서 기안 OR 본인이 결재자인 건 + status/type 필터 적용 (AND)
+      // MANAGER: 본인 부서 기안 OR 본인이 결재자인 건 (approverId 또는 steps) + status/type 필터 적용 (AND)
       where = {
         AND: [
           {
             OR: [
               { applicant: { department: sessionUser.department } },
               { approverId: sessionUser.id },
+              { steps: { some: { approverId: sessionUser.id } } },
             ],
           },
           ...(status ? [{ status }] : []),
@@ -110,7 +122,7 @@ export async function POST(request: NextRequest) {
       return badRequest(parsed.error.issues.map((e: { message: string }) => e.message).join(', '))
     }
     // applicantId는 클라이언트가 보내더라도 세션 사용자로 강제 — 타인 명의 기안 방지
-    const { title, type, assetIds, reason, approverId } = parsed.data
+    const { title, type, assetIds, reason, approverId, approverIds } = parsed.data
     const applicantId = sessionUser.id
 
     // assetIds 선택적 — 단독 기안 허용
@@ -123,15 +135,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 다단계 결재선 구성 — approverIds 우선, 없으면 approverId 단독
+    const stepIds: string[] = approverIds?.filter(Boolean) ?? (approverId ? [approverId] : [])
+    // 첫 번째 결재자를 approverId에도 설정 (하위 호환)
+    const primaryApproverId = stepIds[0] ?? undefined
+
     const approval = await prisma.approval.create({
       data: {
         title,
         type,
         applicantId,
         ...(reason && { reason }),
-        ...(approverId && { approverId }),
+        ...(primaryApproverId && { approverId: primaryApproverId }),
         ...(ids.length > 0 && {
           assets: { create: ids.map((assetId: string) => ({ assetId })) },
+        }),
+        ...(stepIds.length > 0 && {
+          steps: {
+            create: stepIds.map((sid, idx) => ({
+              approverId: sid,
+              order:      idx + 1,
+              status:     idx === 0 ? 'PENDING' : 'WAITING',
+            })),
+          },
         }),
       },
       include: {
@@ -141,8 +167,29 @@ export async function POST(request: NextRequest) {
             asset: { select: { id: true, code: true, name: true, status: true } },
           },
         },
+        steps: {
+          include: { approver: { select: { id: true, name: true, role: true } } },
+          orderBy: { order: 'asc' },
+        },
       },
     })
+
+    // TYPE 레이블
+    const TYPE_LABEL: Record<string, string> = {
+      PURCHASE: '구매', DISPOSAL: '폐기', TRANSFER: '이관',
+      MAINTENANCE_REQUEST: '유지보수', RENTAL: '대여',
+    }
+
+    // 첫 번째 결재자에게 알림 (다단계인 경우 1순위에게만)
+    if (primaryApproverId) {
+      createNotification({
+        userId: primaryApproverId,
+        type:   'APPROVAL_REQUEST',
+        title:  '새 결재 요청',
+        body:   `${sessionUser.name}님이 [${TYPE_LABEL[approval.type] ?? approval.type}] "${approval.title}" 결재를 요청했습니다.`,
+        link:   '/approvals',
+      })
+    }
 
     return created(approval)
   } catch (error) {

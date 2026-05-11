@@ -3,8 +3,9 @@ export const dynamic = 'force-dynamic'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { badRequest, created, ok, serverError } from '@/lib/api-response'
-import type { AssetCategory } from '@/generated/prisma/enums'
-import { requireRoles } from '@/lib/rbac'
+import type { AssetCategory, AssetStatus } from '@prisma/client'
+import { requireRoles, getRequestUser } from '@/lib/rbac'
+import { invalidateCache } from '@/lib/redis'
 
 // ── 품목 매핑 ─────────────────────────────────────────────────────────────────
 const CATEGORY_MAP: Record<string, AssetCategory> = {
@@ -186,6 +187,69 @@ export async function POST(request: NextRequest) {
       deactivated,
       total:       rows.length,
     })
+  } catch (error) {
+    return serverError(error)
+  }
+}
+
+// ── PATCH /api/assets/bulk — 일괄 상태 변경 ───────────────────────────────────
+// Body: { ids: string[], status: AssetStatus }
+const VALID_STATUSES_SET = new Set<AssetStatus>(['AVAILABLE', 'IN_USE', 'UNDER_MAINTENANCE', 'RETIRED', 'DISPOSED'])
+const STATUS_LABEL_MAP: Record<string, string> = {
+  AVAILABLE: '사용가능', IN_USE: '사용중', UNDER_MAINTENANCE: '수리중',
+  RETIRED: '보관중', DISPOSED: '처분',
+}
+
+export async function PATCH(request: NextRequest) {
+  const authError = await requireRoles(request, ['ADMIN', 'MANAGER'])
+  if (authError) return authError
+
+  try {
+    const sessionUser = await getRequestUser(request)
+    const body = await request.json()
+    const { ids, status } = body as { ids: string[]; status: string }
+
+    if (!Array.isArray(ids) || ids.length === 0) return badRequest('ids 배열이 필요합니다')
+    if (ids.length > 500)                         return badRequest('한 번에 최대 500건까지 처리 가능합니다')
+    if (!VALID_STATUSES_SET.has(status as AssetStatus)) return badRequest('유효하지 않은 상태값입니다')
+
+    const targetStatus = status as AssetStatus
+
+    // 실제 존재하는 활성 자산만 추리기 (삭제된 자산 제외)
+    const assets = await prisma.asset.findMany({
+      where:  { id: { in: ids }, deletedAt: null },
+      select: { id: true, status: true },
+    })
+    if (assets.length === 0) return badRequest('유효한 자산이 없습니다')
+
+    const validIds = assets.map((a) => a.id)
+
+    // 상태 업데이트 + HistoryLog 일괄 생성 (트랜잭션)
+    await prisma.$transaction(async (tx) => {
+      await tx.asset.updateMany({
+        where: { id: { in: validIds } },
+        data:  { status: targetStatus },
+      })
+      if (sessionUser) {
+        await tx.historyLog.createMany({
+          data: validIds.map((assetId) => ({
+            assetId,
+            userId: sessionUser.id,
+            type:   'STATUS_CHANGED',
+            detail: `[일괄 변경] 상태 → ${STATUS_LABEL_MAP[targetStatus] ?? targetStatus}`,
+          })),
+        })
+      }
+    })
+
+    // 통계 캐시 무효화 (role × dept 조합)
+    await invalidateCache([
+      'stats:ADMIN:undefined',
+      `stats:MANAGER:${sessionUser?.department ?? '*'}`,
+      `stats:STAFF:${sessionUser?.department ?? '*'}`,
+    ])
+
+    return ok({ updated: validIds.length, status: targetStatus })
   } catch (error) {
     return serverError(error)
   }

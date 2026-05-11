@@ -33,11 +33,11 @@ interface ModalProps {
 export function Modal({ title, onClose, size = 'xl', children, footer }: ModalProps) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm"
       role="presentation"
     >
       <div
-        className={`bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full ${SIZE_CLASS[size]} mx-4 flex flex-col max-h-[90vh]`}
+        className={`bg-white dark:bg-slate-800 rounded-t-2xl sm:rounded-2xl shadow-2xl w-full ${SIZE_CLASS[size]} sm:mx-4 flex flex-col max-h-[92vh] sm:max-h-[90vh]`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
