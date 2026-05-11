@@ -15,9 +15,13 @@ const nextConfig = {
     ],
   },
 
-  // xlsx(SheetJS)는 Node.js 전용 대형 패키지 — Vercel 함수 번들링 시
-  // 정적 분석으로 누락되는 것을 방지하기 위해 외부 패키지로 명시
-  serverExternalPackages: ['xlsx'],
+  experimental: {
+    // xlsx(SheetJS)는 Node.js 전용 대형 패키지 — Vercel 함수 번들링 시
+    // 정적 분석으로 누락되는 것을 방지하기 위해 외부 패키지로 명시
+    // Next.js 14: experimental.serverComponentsExternalPackages
+    // Next.js 15+: serverExternalPackages (top-level)
+    serverComponentsExternalPackages: ['xlsx'],
+  },
 };
 
 export default nextConfig;

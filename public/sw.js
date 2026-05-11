@@ -1,4 +1,4 @@
-const CACHE = 'nextasset-v1'
+const CACHE = 'nextasset-v2'
 
 const APP_SHELL = [
   '/',
@@ -23,14 +23,23 @@ self.addEventListener('activate', (e) => {
 })
 
 self.addEventListener('fetch', (e) => {
+  const url = e.request.url
+
+  // Next.js 내부 리소스(청크, HMR, 이미지 최적화 등)는 절대 캐시하지 않고 네트워크 직통
+  if (url.includes('/_next/')) {
+    e.respondWith(fetch(e.request))
+    return
+  }
+
   // API 요청은 네트워크 우선, 실패 시 캐시
-  if (e.request.url.includes('/api/')) {
+  if (url.includes('/api/')) {
     e.respondWith(
       fetch(e.request).catch(() => caches.match(e.request))
     )
     return
   }
-  // 정적 자산은 캐시 우선
+
+  // 페이지 요청은 캐시 우선 (오프라인 지원)
   e.respondWith(
     caches.match(e.request).then((cached) => {
       if (cached) return cached

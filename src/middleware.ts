@@ -54,8 +54,8 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // 정적 자산, 로그인 페이지, Supabase Auth 콜백은 미들웨어 제외
+  // _next 하위 모든 경로(청크, HMR, 이미지 등)와 공개 경로 제외
   matcher: [
-    '/((?!login|api/auth|_next/static|_next/image|favicon\\.ico).*)',
+    '/((?!_next|login|api/auth|favicon\\.ico).*)',
   ],
 }
