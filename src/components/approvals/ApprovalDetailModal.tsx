@@ -220,14 +220,23 @@ export default function ApprovalDetailModal({ approvalId, onClose, onUpdated }: 
   const isPending = approval?.status === 'PENDING'
   const isApplicant = approval?.applicant?.id === currentUser.id
 
+  // 현재 PENDING 스텝의 지정 결재자이거나, 스텝 없는 단일 결재의 지정 결재자인 경우
+  const isDesignatedApprover = approval
+    ? approval.steps?.length > 0
+      ? approval.steps.some((s) => s.status === 'PENDING' && s.approver.id === currentUser.id)
+      : approval.approver?.id === currentUser.id
+    : false
+
+  const canApprove = canManageAssets || isDesignatedApprover
+
   return (
     <Modal
       title={<><FileText className="w-5 h-5 mr-2 text-blue-600" />결재 상세</>}
       onClose={onClose}
       size="xl"
       footer={
-        <div className="p-6 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center">
-          {/* 취소 버튼 (기안자 본인 + PENDING) */}
+        <div className="px-4 py-4 sm:px-6 flex flex-col-reverse sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0">
+          {/* 회수 버튼 (기안자 본인 + PENDING) */}
           <div>
             {isPending && isApplicant && (
               <button
@@ -236,34 +245,34 @@ export default function ApprovalDetailModal({ approvalId, onClose, onUpdated }: 
                 className="flex items-center px-4 py-2 text-sm font-semibold text-slate-600 bg-slate-100 border border-slate-200 rounded-lg hover:bg-slate-200 disabled:opacity-50 transition-colors"
               >
                 {actionLoading === 'CANCELLED' ? <RefreshCcw className="w-4 h-4 mr-2 animate-spin" /> : <Ban className="w-4 h-4 mr-2" />}
-                기안 취소
+                회수
               </button>
             )}
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-2 sm:gap-3">
             <button onClick={onClose}
-              className="px-5 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors">
+              className="flex-1 sm:flex-none px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors text-center">
               닫기
             </button>
 
-            {/* 승인/반려 (admin/manager + PENDING) */}
-            {isPending && canManageAssets && (
+            {/* 승인/반려 (admin/manager 또는 지정 결재자 + PENDING) */}
+            {isPending && canApprove && (
               <>
                 <button
                   onClick={() => handleAction('REJECTED')}
                   disabled={actionLoading !== null}
-                  className="flex items-center px-4 py-2.5 text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors"
+                  className="flex-1 sm:flex-none flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors"
                 >
-                  {actionLoading === 'REJECTED' ? <RefreshCcw className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
+                  {actionLoading === 'REJECTED' ? <RefreshCcw className="w-4 h-4 mr-1.5 animate-spin" /> : <XCircle className="w-4 h-4 mr-1.5" />}
                   반려
                 </button>
                 <button
                   onClick={() => handleAction('APPROVED')}
                   disabled={actionLoading !== null}
-                  className="flex items-center px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                  className="flex-1 sm:flex-none flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
                 >
-                  {actionLoading === 'APPROVED' ? <RefreshCcw className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                  {actionLoading === 'APPROVED' ? <RefreshCcw className="w-4 h-4 mr-1.5 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-1.5" />}
                   승인
                 </button>
               </>
@@ -272,7 +281,7 @@ export default function ApprovalDetailModal({ approvalId, onClose, onUpdated }: 
         </div>
       }
     >
-      <div className="p-6 space-y-5">
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
         {loading ? (
           <div className="flex items-center justify-center h-40">
             <RefreshCcw className="w-5 h-5 animate-spin text-blue-500 mr-2" />

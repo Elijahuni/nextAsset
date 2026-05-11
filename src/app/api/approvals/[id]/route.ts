@@ -81,16 +81,6 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return badRequest(`status must be one of: ${validStatuses.join(', ')}`)
     }
 
-    // 승인·반려는 admin·manager 권한 필요
-    if (status === 'APPROVED' || status === 'REJECTED') {
-      if (sessionUser.role !== 'ADMIN' && sessionUser.role !== 'MANAGER') {
-        return new Response(JSON.stringify({ error: '권한이 없습니다.' }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
-    }
-
     // Load current approval to validate state transition
     const existing = await prisma.approval.findUnique({
       where: { id },
@@ -103,6 +93,20 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     if (!existing) return notFound('Approval')
     if (existing.status !== 'PENDING') {
       return badRequest(`Approval is already ${existing.status} and cannot be updated`)
+    }
+
+    // 승인·반려 권한 검증: ADMIN/MANAGER이거나, 현재 PENDING 스텝의 지정 결재자이어야 함
+    if (status === 'APPROVED' || status === 'REJECTED') {
+      const isDesignatedApprover =
+        existing.approverId === sessionUser.id ||
+        existing.steps.some((s) => s.status === 'PENDING' && s.approverId === sessionUser.id)
+
+      if (sessionUser.role !== 'ADMIN' && sessionUser.role !== 'MANAGER' && !isDesignatedApprover) {
+        return new Response(JSON.stringify({ error: '권한이 없습니다. 결재 담당자만 처리할 수 있습니다.' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
     }
 
     // CANCELLED는 기안자 본인만 가능

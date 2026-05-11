@@ -45,20 +45,29 @@ export async function GET(request: NextRequest) {
     let where: Prisma.ApprovalWhereInput
 
     if (sessionUser.role === 'STAFF') {
-      // STAFF: 본인 기안만 조회 — applicantId 파라미터 무시
+      // STAFF: 본인 기안 + 본인이 결재자로 지정된 건 (approverId 또는 steps)
       where = {
-        applicantId: sessionUser.id,
-        ...(status && { status }),
-        ...(type && { type }),
+        AND: [
+          {
+            OR: [
+              { applicantId: sessionUser.id },
+              { approverId: sessionUser.id },
+              { steps: { some: { approverId: sessionUser.id } } },
+            ],
+          },
+          ...(status ? [{ status }] : []),
+          ...(type   ? [{ type }]   : []),
+        ],
       }
     } else if (sessionUser.role === 'MANAGER') {
-      // MANAGER: 본인 부서 기안 OR 본인이 결재자인 건 + status/type 필터 적용 (AND)
+      // MANAGER: 본인 부서 기안 OR 본인이 결재자인 건 (approverId 또는 steps) + status/type 필터 적용 (AND)
       where = {
         AND: [
           {
             OR: [
               { applicant: { department: sessionUser.department } },
               { approverId: sessionUser.id },
+              { steps: { some: { approverId: sessionUser.id } } },
             ],
           },
           ...(status ? [{ status }] : []),
