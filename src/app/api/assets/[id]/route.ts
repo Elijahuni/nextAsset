@@ -93,22 +93,36 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       },
     })
 
-    // 변경 내역 HistoryLog 기록
+    // 변경 내역 HistoryLog 기록 — 수정 가능한 모든 필드의 before→after diff 기록 (감사 추적)
+    const fmt = (v: unknown) => (v === null || v === undefined || v === '') ? '없음' : String(v)
+    const dateStr = (v: Date | null | undefined) => v ? new Date(v).toISOString().split('T')[0] : '없음'
     const changes: string[] = []
-    if (status     && status     !== existing.status)     changes.push(`상태: ${existing.status} → ${status}`)
-    if (department && department !== existing.department) changes.push(`부서: ${existing.department} → ${department}`)
-    if (location   && location   !== existing.location)   changes.push(`위치: ${existing.location} → ${location}`)
-    if (name       && name       !== existing.name)       changes.push(`자산명: ${existing.name} → ${name}`)
-    if (assignedTo !== undefined && assignedTo !== existing.assignedTo) {
-      changes.push(`담당자: ${existing.assignedTo ?? '없음'} → ${assignedTo ?? '없음'}`)
+    if (status      && status      !== existing.status)      changes.push(`상태: ${existing.status} → ${status}`)
+    if (department  && department  !== existing.department)  changes.push(`부서: ${existing.department} → ${department}`)
+    if (location    && location    !== existing.location)    changes.push(`위치: ${existing.location} → ${location}`)
+    if (name        && name        !== existing.name)        changes.push(`자산명: ${existing.name} → ${name}`)
+    if (category    && category    !== existing.category)    changes.push(`품목: ${existing.category} → ${category}`)
+    if (price != null && Number(price) !== Number(existing.price)) changes.push(`취득가액: ${fmt(existing.price)} → ${fmt(price)}`)
+    if (acquiredDate && new Date(acquiredDate).getTime() !== new Date(existing.acquiredDate).getTime()) {
+      changes.push(`취득일: ${dateStr(existing.acquiredDate)} → ${dateStr(new Date(acquiredDate))}`)
     }
+    if (warrantyDate !== undefined) {
+      const next = warrantyDate ? new Date(warrantyDate) : null
+      if (dateStr(next) !== dateStr(existing.warrantyDate)) changes.push(`보증만료일: ${dateStr(existing.warrantyDate)} → ${dateStr(next)}`)
+    }
+    if (assignedTo  !== undefined && (assignedTo  || null) !== existing.assignedTo)  changes.push(`담당자: ${fmt(existing.assignedTo)} → ${fmt(assignedTo)}`)
+    if (barcode     !== undefined && (barcode     || null) !== existing.barcode)     changes.push(`바코드: ${fmt(existing.barcode)} → ${fmt(barcode)}`)
+    if (subCategory !== undefined && (subCategory || null) !== existing.subCategory) changes.push(`중분류: ${fmt(existing.subCategory)} → ${fmt(subCategory)}`)
+    if (description !== undefined && (description || null) !== existing.description) changes.push(`설명: ${fmt(existing.description)} → ${fmt(description)}`)
+    if (size        !== undefined && (size        || null) !== existing.size)        changes.push(`사이즈: ${fmt(existing.size)} → ${fmt(size)}`)
+    if (color       !== undefined && (color       || null) !== existing.color)       changes.push(`색상: ${fmt(existing.color)} → ${fmt(color)}`)
+    if (remarks     !== undefined && (remarks     || null) !== existing.remarks)     changes.push(`비고: ${fmt(existing.remarks)} → ${fmt(remarks)}`)
     if (changes.length > 0) {
-      const historyType = (status && status !== existing.status) ? 'STATUS_CHANGED' : 'STATUS_CHANGED'
       await prisma.historyLog.create({
         data: {
           assetId: id,
           userId:  sessionUser.id,
-          type:    historyType,
+          type:    'STATUS_CHANGED',
           detail:  `[직접 수정] ${changes.join(', ')}`,
         },
       })

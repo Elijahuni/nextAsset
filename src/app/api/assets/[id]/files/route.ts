@@ -18,10 +18,15 @@ const ConfirmSchema = z.object({
   size:        z.number().int().positive().max(5 * 1024 * 1024),
 })
 
-function toPublicUrl(storagePath: string) {
-  return supabaseAdmin.storage
+const SIGNED_URL_TTL = 60 * 60 // 1시간
+
+// 인증된 사용자에게만 발급되는 만료형 서명 URL.
+// ⚠️ 'asset-files' 버킷은 반드시 Private으로 설정해야 실제 접근 통제가 적용됩니다(Supabase 대시보드).
+async function toSignedUrl(storagePath: string): Promise<string | null> {
+  const { data } = await supabaseAdmin.storage
     .from('asset-files')
-    .getPublicUrl(storagePath).data.publicUrl
+    .createSignedUrl(storagePath, SIGNED_URL_TTL)
+  return data?.signedUrl ?? null
 }
 
 // GET /api/assets/[id]/files
@@ -35,11 +40,12 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       where:   { assetId: id },
       orderBy: { createdAt: 'desc' },
     })
-    return ok(files.map((f: { storagePath: string; createdAt: Date; [key: string]: unknown }) => ({
+    const withUrls = await Promise.all(files.map(async (f: { storagePath: string; createdAt: Date; [key: string]: unknown }) => ({
       ...f,
       createdAt: f.createdAt.toISOString(),
-      url:       toPublicUrl(f.storagePath),
+      url:       await toSignedUrl(f.storagePath),
     })))
+    return ok(withUrls)
   } catch (e) {
     return serverError(e)
   }
@@ -66,7 +72,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const file = await prisma.assetFile.create({
       data: { assetId: id, ...parsed.data },
     })
-    return ok({ ...file, createdAt: file.createdAt.toISOString(), url: toPublicUrl(file.storagePath) })
+    return ok({ ...file, createdAt: file.createdAt.toISOString(), url: await toSignedUrl(file.storagePath) })
   } catch (e) {
     return serverError(e)
   }
