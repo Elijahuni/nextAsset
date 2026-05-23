@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { badRequest, created, ok, serverError } from '@/lib/api-response'
 import { AssetCategory, AssetStatus } from '@prisma/client'
 import { statusGroupToEnums } from '@/lib/utils'
-import { requireRoles, getRequestUser } from '@/lib/rbac'
+import { getRequestUser } from '@/lib/rbac'
 import { invalidateCache } from '@/lib/redis'
 
 const CreateAssetSchema = z.object({
@@ -36,11 +36,17 @@ const VALID_CATEGORIES = new Set(Object.values(AssetCategory))
 // ▸ page 파라미터가 없으면 전체 배열 반환 (Dashboard 하위 호환)
 // ▸ page 파라미터가 있으면 페이지네이션 객체 반환
 export async function GET(request: NextRequest) {
-  const authError = await requireRoles(request, ['ADMIN', 'MANAGER', 'STAFF'])
-  if (authError) return authError
+  const sessionUser = await getRequestUser(request)
+  if (!sessionUser) {
+    return new Response(JSON.stringify({ error: '인증이 필요합니다.' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+  }
+  // MANAGER는 본인 부서 자산만 조회 가능 — 서버사이드 강제(클라이언트 필터 신뢰 금지).
+  // ADMIN/STAFF는 전체 열람.
+  const deptScope = sessionUser.role === 'MANAGER' ? sessionUser.department : null
   try {
     const { searchParams } = request.nextUrl
-    const department  = searchParams.get('department') ?? undefined
+    // deptScope가 있으면 쿼리파라미터 department를 무시하고 본인 부서로 고정
+    const department  = deptScope ?? (searchParams.get('department') ?? undefined)
     const rawStatus   = searchParams.get('status')
     const rawCategory = searchParams.get('category')
     // enum 화이트리스트 검증 — 잘못된 값은 무시
@@ -113,6 +119,7 @@ export async function GET(request: NextRequest) {
         where: {
           deletedAt:   null,
           warrantyDate: { not: null, lte: thirtyDaysLater },
+          ...(deptScope && { department: deptScope }),
         },
         select: { id: true, name: true, warrantyDate: true, status: true },
         orderBy: { warrantyDate: 'asc' },
@@ -152,8 +159,9 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      // 부서 목록 전체 조회 (필터 드롭다운용, 페이지네이션 무관)
+      // 부서 목록 조회 (필터 드롭다운용) — MANAGER는 본인 부서만
       prisma.asset.findMany({
+        where:    deptScope ? { department: deptScope } : undefined,
         select:   { department: true },
         distinct: ['department'],
         orderBy:  { department: 'asc' },

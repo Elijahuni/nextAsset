@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server'
 import * as XLSX from 'xlsx'
 import { prisma } from '@/lib/prisma'
 import { serverError } from '@/lib/api-response'
-import { requireRoles } from '@/lib/rbac'
+import { getRequestUser } from '@/lib/rbac'
 import { AssetCategory, AssetStatus } from '@prisma/client'
 import { DEFAULT_DEPRECIATION_RULES } from '@/lib/depreciation'
 
@@ -92,15 +92,22 @@ function styleHeader(ws: XLSX.WorkSheet, colCount: number) {
 
 // GET /api/export/assets?q=&status=&category=&department=&active=
 export async function GET(request: NextRequest) {
-  const authError = await requireRoles(request, ['ADMIN', 'MANAGER'])
-  if (authError) return authError
+  const sessionUser = await getRequestUser(request)
+  if (!sessionUser) {
+    return new Response(JSON.stringify({ error: '인증이 필요합니다.' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+  }
+  if (!['ADMIN', 'MANAGER'].includes(sessionUser.role)) {
+    return new Response(JSON.stringify({ error: '권한이 없습니다.' }), { status: 403, headers: { 'Content-Type': 'application/json' } })
+  }
+  // MANAGER는 본인 부서만 내보내기 가능 — 쿼리파라미터보다 우선
+  const deptScope = sessionUser.role === 'MANAGER' ? sessionUser.department : null
 
   try {
     const { searchParams } = request.nextUrl
     const q                  = searchParams.get('q')?.trim() ?? ''
     const rawStatus          = searchParams.get('status')
     const rawCategory        = searchParams.get('category')
-    const department         = searchParams.get('department') ?? undefined
+    const department         = deptScope ?? (searchParams.get('department') ?? undefined)
     const activeGroup        = searchParams.get('active')
     const dateFrom           = searchParams.get('dateFrom')
     const dateTo             = searchParams.get('dateTo')

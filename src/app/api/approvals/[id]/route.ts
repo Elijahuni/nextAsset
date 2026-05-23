@@ -2,12 +2,16 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { badRequest, notFound, ok, serverError } from '@/lib/api-response'
+import { badRequest, conflict, notFound, ok, serverError } from '@/lib/api-response'
 import type { ApprovalType, AssetStatus, HistoryType } from '@prisma/client'
 import { requireRoles, getRequestUser } from '@/lib/rbac'
 import { createNotification } from '@/lib/notifications'
 
 type RouteContext = { params: Promise<{ id: string }> }
+
+// 동시 처리 충돌(이중 승인/반려)을 트랜잭션 내부에서 신호하기 위한 센티넬 에러
+class ApprovalConflictError extends Error {}
+const CONFLICT_MSG = '이미 다른 사용자가 처리한 결재입니다. 새로고침 후 다시 확인해주세요.'
 
 // ApprovalType 별로 자산에 적용할 상태와 이력 타입을 결정
 const APPROVAL_EFFECT: Record<
@@ -137,10 +141,12 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         if (nextStep) {
           // 중간 단계 승인 — 아직 최종 승인 아님
           const result = await prisma.$transaction(async (tx) => {
-            await tx.approvalStep.update({
-              where: { id: currentStep.id },
+            // 낙관적 락: 현재 스텝이 여전히 PENDING일 때만 승인 처리 (동시 이중처리 차단)
+            const claimed = await tx.approvalStep.updateMany({
+              where: { id: currentStep.id, status: 'PENDING' },
               data: { status: 'APPROVED', actedAt: new Date(), ...(reason !== undefined && { comment: reason }) },
             })
+            if (claimed.count === 0) throw new ApprovalConflictError(CONFLICT_MSG)
             await tx.approvalStep.update({
               where: { id: nextStep.id },
               data: { status: 'PENDING' },
@@ -169,22 +175,29 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           return ok(result)
         }
 
-        // 마지막 스텝 승인 → 최종 승인 처리로 진행
-        await prisma.approvalStep.update({
-          where: { id: currentStep.id },
+        // 마지막 스텝 승인 → 최종 승인 처리로 진행 (낙관적 락)
+        const claimed = await prisma.approvalStep.updateMany({
+          where: { id: currentStep.id, status: 'PENDING' },
           data: { status: 'APPROVED', actedAt: new Date(), ...(reason !== undefined && { comment: reason }) },
         })
+        if (claimed.count === 0) return conflict(CONFLICT_MSG)
       }
 
       // 최종 승인 (스텝 없는 단일 결재 또는 모든 스텝 완료)
       const result = await prisma.$transaction(async (tx) => {
-        const approval = await tx.approval.update({
-          where: { id },
+        // 낙관적 락: 결재가 여전히 PENDING일 때만 최종 승인 (동시 이중승인 차단)
+        const finalized = await tx.approval.updateMany({
+          where: { id, status: 'PENDING' },
           data: {
             status: 'APPROVED',
-            approverId,
+            ...(approverId && { approverId }),
             ...(reason !== undefined && { reason }),
           },
+        })
+        if (finalized.count === 0) throw new ApprovalConflictError(CONFLICT_MSG)
+
+        const approval = await tx.approval.findUniqueOrThrow({
+          where: { id },
           include: {
             applicant: { select: { id: true, name: true, department: true } },
             approver:  { select: { id: true, name: true } },
@@ -252,13 +265,19 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       }
     }
 
-    const approval = await prisma.approval.update({
-      where: { id },
+    // 낙관적 락: PENDING일 때만 반려/취소 처리 (동시 이중처리 차단)
+    const updated = await prisma.approval.updateMany({
+      where: { id, status: 'PENDING' },
       data: {
         status,
         ...(approverId && { approverId }),
         ...(reason !== undefined && { reason }),
       },
+    })
+    if (updated.count === 0) return conflict(CONFLICT_MSG)
+
+    const approval = await prisma.approval.findUniqueOrThrow({
+      where: { id },
       include: {
         applicant: { select: { id: true, name: true, department: true } },
         approver:  { select: { id: true, name: true } },
@@ -295,6 +314,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     return ok(approval)
   } catch (error) {
+    if (error instanceof ApprovalConflictError) return conflict(error.message)
     return serverError(error)
   }
 }
